@@ -1,0 +1,138 @@
+/* Modern Fintech Theme
+ * Clean, spacious design with purple accents and smooth gradients
+ * Inspired by Robinhood, Stripe, and modern financial apps
+ */
+
+[data-theme="fintech"] {
+    /* Backgrounds */
+    --bg-primary: #0f0f14;
+    --bg-secondary: #16161d;
+    --bg-card: #1c1c26;
+    --bg-hover: #252532;
+
+    /* Text */
+    --text-primary: #ffffff;
+    --text-secondary: #a0a0b0;
+    --text-muted: #606070;
+
+    /* Accents */
+    --accent-primary: #7c3aed;
+    --accent-secondary: #06b6d4;
+    --accent-success: #10b981;
+    --accent-danger: #ef4444;
+    --accent-info: #3b82f6;
+
+    /* Chart */
+    --chart-line-1: #7c3aed;
+    --chart-line-2: #06b6d4;
+    --chart-line-3: #ef4444;
+    --chart-fill: rgba(124, 58, 237, 0.15);
+    --chart-grid: #2a2a38;
+
+    /* Borders */
+    --border-color: #2a2a38;
+    --border-radius: 12px;
+
+    /* Typography */
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-body: 'DM Sans', sans-serif;
+    --font-mono: 'Space Grotesk', monospace;
+}
+
+/* Fintech-specific overrides */
+[data-theme="fintech"] .header {
+    background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+    border-bottom: 1px solid rgba(124, 58, 237, 0.2);
+}
+
+[data-theme="fintech"] .logo {
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+[data-theme="fintech"] .metric {
+    background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
+    border: 1px solid rgba(124, 58, 237, 0.15);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="fintech"] .metric-value {
+    background: linear-gradient(135deg, #ffffff 0%, #a0a0b0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+[data-theme="fintech"] .form-input,
+[data-theme="fintech"] .form-select {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+[data-theme="fintech"] .form-input:focus,
+[data-theme="fintech"] .form-select:focus {
+    background: rgba(124, 58, 237, 0.05);
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.15);
+}
+
+[data-theme="fintech"] .btn-primary {
+    background: linear-gradient(135deg, var(--accent-primary) 0%, #5b21b6 100%);
+    border: none;
+    box-shadow: 0 4px 15px rgba(124, 58, 237, 0.4);
+    transition: all 0.3s ease;
+}
+
+[data-theme="fintech"] .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(124, 58, 237, 0.5);
+}
+
+[data-theme="fintech"] .card,
+[data-theme="fintech"] .chart-container,
+[data-theme="fintech"] .data-table-container {
+    background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="fintech"] .status-dot.connected {
+    background: var(--accent-success);
+    box-shadow: 0 0 15px var(--accent-success);
+}
+
+[data-theme="fintech"] .status-dot.tracking {
+    background: var(--accent-primary);
+    box-shadow: 0 0 15px var(--accent-primary);
+}
+
+[data-theme="fintech"] .greek {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="fintech"] .metric-delta.positive {
+    color: var(--accent-success);
+}
+
+[data-theme="fintech"] .metric-delta.negative {
+    color: var(--accent-danger);
+}
+
+[data-theme="fintech"] .contract-info {
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.1) 0%, transparent 100%);
+    border: 1px solid rgba(124, 58, 237, 0.2);
+}
+
+/* Smooth animations */
+[data-theme="fintech"] * {
+    transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Scrollbar */
+[data-theme="fintech"]::-webkit-scrollbar-thumb {
+    background: var(--accent-primary);
+    border-radius: 4px;
+}

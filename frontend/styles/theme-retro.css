@@ -1,0 +1,209 @@
+/* Retro-Futuristic Theme
+ * 80s terminal aesthetic with CRT effects and phosphor glow
+ * Inspired by classic computer terminals and cyberpunk aesthetics
+ */
+
+[data-theme="retro"] {
+    /* Backgrounds */
+    --bg-primary: #0a0a1a;
+    --bg-secondary: #0d0d24;
+    --bg-card: #12122e;
+    --bg-hover: #1a1a40;
+
+    /* Text */
+    --text-primary: #ffd700;
+    --text-secondary: #c9a800;
+    --text-muted: #665500;
+
+    /* Accents */
+    --accent-primary: #ffd700;
+    --accent-secondary: #39ff14;
+    --accent-success: #39ff14;
+    --accent-danger: #ff3366;
+    --accent-info: #00ffff;
+
+    /* Chart */
+    --chart-line-1: #ffd700;
+    --chart-line-2: #39ff14;
+    --chart-line-3: #ff3366;
+    --chart-fill: rgba(255, 215, 0, 0.1);
+    --chart-grid: #1a1a40;
+
+    /* Borders */
+    --border-color: #333366;
+    --border-radius: 2px;
+
+    /* Typography */
+    --font-display: 'VT323', monospace;
+    --font-body: 'Share Tech Mono', monospace;
+    --font-mono: 'VT323', monospace;
+}
+
+/* CRT scanline effect */
+[data-theme="retro"]::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.1) 0px,
+        rgba(0, 0, 0, 0.1) 1px,
+        transparent 1px,
+        transparent 2px
+    );
+    pointer-events: none;
+    z-index: 9999;
+}
+
+/* Retro-specific overrides */
+[data-theme="retro"] .header {
+    border-bottom: 2px solid var(--accent-primary);
+    box-shadow: 0 2px 20px rgba(255, 215, 0, 0.3);
+}
+
+[data-theme="retro"] .logo {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    text-shadow:
+        0 0 10px var(--accent-primary),
+        0 0 20px var(--accent-primary),
+        0 0 30px var(--accent-primary);
+    animation: flicker 3s infinite;
+}
+
+@keyframes flicker {
+    0%, 100% { opacity: 1; }
+    92% { opacity: 1; }
+    93% { opacity: 0.8; }
+    94% { opacity: 1; }
+    95% { opacity: 0.9; }
+    96% { opacity: 1; }
+}
+
+[data-theme="retro"] .metric-value {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    text-shadow:
+        0 0 5px var(--accent-primary),
+        0 0 10px var(--accent-primary);
+}
+
+[data-theme="retro"] .form-input,
+[data-theme="retro"] .form-select {
+    font-family: var(--font-body);
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+[data-theme="retro"] .form-input:focus,
+[data-theme="retro"] .form-select:focus {
+    box-shadow:
+        0 0 5px var(--accent-primary),
+        0 0 10px var(--accent-primary),
+        inset 0 0 5px rgba(255, 215, 0, 0.2);
+}
+
+[data-theme="retro"] .form-input::placeholder {
+    color: var(--text-muted);
+}
+
+[data-theme="retro"] .btn-primary {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    background: transparent;
+    border: 2px solid var(--accent-primary);
+    color: var(--accent-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    text-shadow: 0 0 5px var(--accent-primary);
+}
+
+[data-theme="retro"] .btn-primary:hover {
+    background: var(--accent-primary);
+    color: var(--bg-primary);
+    box-shadow:
+        0 0 10px var(--accent-primary),
+        0 0 20px var(--accent-primary);
+}
+
+[data-theme="retro"] .card,
+[data-theme="retro"] .metric,
+[data-theme="retro"] .chart-container,
+[data-theme="retro"] .data-table-container {
+    border: 1px solid var(--border-color);
+    box-shadow:
+        inset 0 0 20px rgba(255, 215, 0, 0.03),
+        0 0 10px rgba(255, 215, 0, 0.1);
+}
+
+[data-theme="retro"] .status-dot.connected,
+[data-theme="retro"] .status-dot.tracking {
+    box-shadow:
+        0 0 5px var(--accent-secondary),
+        0 0 10px var(--accent-secondary),
+        0 0 15px var(--accent-secondary);
+}
+
+[data-theme="retro"] .greek-value {
+    font-family: var(--font-display);
+    color: var(--accent-secondary);
+    text-shadow: 0 0 5px var(--accent-secondary);
+}
+
+[data-theme="retro"] .metric-delta.positive {
+    color: var(--accent-secondary);
+    text-shadow: 0 0 5px var(--accent-secondary);
+}
+
+[data-theme="retro"] .metric-delta.negative {
+    color: var(--accent-danger);
+    text-shadow: 0 0 5px var(--accent-danger);
+}
+
+[data-theme="retro"] .sidebar-title,
+[data-theme="retro"] .form-label,
+[data-theme="retro"] .chart-title,
+[data-theme="retro"] .data-table-title {
+    font-family: var(--font-display);
+    letter-spacing: 0.2em;
+}
+
+[data-theme="retro"] .data-table th {
+    font-family: var(--font-display);
+    background: rgba(255, 215, 0, 0.1);
+    color: var(--accent-primary);
+}
+
+[data-theme="retro"] .data-table td {
+    font-family: var(--font-mono);
+    color: var(--accent-secondary);
+}
+
+[data-theme="retro"] .contract-info {
+    border: 1px solid var(--accent-primary);
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.2);
+}
+
+[data-theme="retro"] .contract-info-value {
+    font-family: var(--font-display);
+    text-shadow: 0 0 5px var(--accent-primary);
+}
+
+/* Glow on hover */
+[data-theme="retro"] .btn:hover,
+[data-theme="retro"] .metric:hover,
+[data-theme="retro"] .greek:hover {
+    box-shadow:
+        0 0 10px var(--accent-primary),
+        0 0 20px rgba(255, 215, 0, 0.3);
+}
+
+/* Scrollbar */
+[data-theme="retro"]::-webkit-scrollbar-thumb {
+    background: var(--accent-primary);
+    box-shadow: 0 0 5px var(--accent-primary);
+}

@@ -1,0 +1,107 @@
+/* Bloomberg Terminal Dark Theme
+ * Inspired by Bloomberg Terminal aesthetic
+ * High information density, neon green accents, pure black background
+ */
+
+[data-theme="bloomberg"] {
+    /* Backgrounds */
+    --bg-primary: #000000;
+    --bg-secondary: #0a0a0a;
+    --bg-card: #111111;
+    --bg-hover: #1a1a1a;
+
+    /* Text */
+    --text-primary: #ffffff;
+    --text-secondary: #cccccc;
+    --text-muted: #666666;
+
+    /* Accents */
+    --accent-primary: #00ff00;
+    --accent-secondary: #ffb000;
+    --accent-success: #00ff00;
+    --accent-danger: #ff3333;
+    --accent-info: #00ccff;
+
+    /* Chart */
+    --chart-line-1: #00ff00;
+    --chart-line-2: #ffb000;
+    --chart-line-3: #ff3333;
+    --chart-fill: rgba(0, 255, 0, 0.1);
+    --chart-grid: #222222;
+
+    /* Borders */
+    --border-color: #333333;
+    --border-radius: 0px;
+
+    /* Typography */
+    --font-display: 'IBM Plex Mono', monospace;
+    --font-body: 'IBM Plex Mono', monospace;
+    --font-mono: 'IBM Plex Mono', monospace;
+}
+
+/* Bloomberg-specific overrides */
+[data-theme="bloomberg"] .header {
+    border-bottom: 2px solid var(--accent-primary);
+}
+
+[data-theme="bloomberg"] .logo {
+    text-shadow: 0 0 10px var(--accent-primary);
+}
+
+[data-theme="bloomberg"] .metric-value {
+    color: var(--accent-primary);
+    text-shadow: 0 0 8px rgba(0, 255, 0, 0.5);
+}
+
+[data-theme="bloomberg"] .form-input:focus,
+[data-theme="bloomberg"] .form-select:focus {
+    box-shadow: 0 0 0 1px var(--accent-primary), 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+[data-theme="bloomberg"] .btn-primary {
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+}
+
+[data-theme="bloomberg"] .card,
+[data-theme="bloomberg"] .metric,
+[data-theme="bloomberg"] .chart-container,
+[data-theme="bloomberg"] .data-table-container {
+    border-radius: 0;
+}
+
+[data-theme="bloomberg"] .status-dot.connected,
+[data-theme="bloomberg"] .status-dot.tracking {
+    box-shadow: 0 0 12px var(--accent-primary);
+}
+
+[data-theme="bloomberg"] .greek-value {
+    color: var(--accent-secondary);
+}
+
+[data-theme="bloomberg"] .metric-delta.positive {
+    color: var(--accent-primary);
+    text-shadow: 0 0 6px rgba(0, 255, 0, 0.5);
+}
+
+[data-theme="bloomberg"] .metric-delta.negative {
+    color: var(--accent-danger);
+    text-shadow: 0 0 6px rgba(255, 51, 51, 0.5);
+}
+
+/* Dense information display */
+[data-theme="bloomberg"] .sidebar {
+    font-size: 0.75rem;
+}
+
+[data-theme="bloomberg"] .form-input,
+[data-theme="bloomberg"] .form-select {
+    padding: var(--space-xs) var(--space-sm);
+    font-size: 0.75rem;
+}
+
+[data-theme="bloomberg"] .btn {
+    padding: var(--space-xs) var(--space-sm);
+    font-size: 0.75rem;
+}

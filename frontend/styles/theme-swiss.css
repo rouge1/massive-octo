@@ -1,0 +1,247 @@
+/* Minimal Swiss Theme
+ * Brutalist precision with stark grid, heavy rules, pure typography
+ * Inspired by Swiss/International Typographic Style
+ */
+
+[data-theme="swiss"] {
+    /* Backgrounds */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f5f5f5;
+    --bg-card: #ffffff;
+    --bg-hover: #eeeeee;
+
+    /* Text */
+    --text-primary: #000000;
+    --text-secondary: #333333;
+    --text-muted: #888888;
+
+    /* Accents */
+    --accent-primary: #ff0000;
+    --accent-secondary: #000000;
+    --accent-success: #000000;
+    --accent-danger: #ff0000;
+    --accent-info: #000000;
+
+    /* Chart */
+    --chart-line-1: #ff0000;
+    --chart-line-2: #000000;
+    --chart-line-3: #888888;
+    --chart-fill: rgba(255, 0, 0, 0.1);
+    --chart-grid: #dddddd;
+
+    /* Borders */
+    --border-color: #000000;
+    --border-radius: 0px;
+
+    /* Typography */
+    --font-display: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    --font-body: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    --font-mono: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+/* Swiss-specific overrides */
+[data-theme="swiss"] .header {
+    background: var(--bg-primary);
+    border-bottom: 4px solid var(--text-primary);
+}
+
+[data-theme="swiss"] .logo {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-primary);
+}
+
+[data-theme="swiss"] .sidebar {
+    border-right: 2px solid var(--text-primary);
+}
+
+[data-theme="swiss"] .metric {
+    background: var(--bg-primary);
+    border: 2px solid var(--text-primary);
+}
+
+[data-theme="swiss"] .metric-label {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+[data-theme="swiss"] .metric-value {
+    font-weight: 700;
+    font-size: 2rem;
+}
+
+[data-theme="swiss"] .form-input,
+[data-theme="swiss"] .form-select {
+    background: var(--bg-primary);
+    border: 2px solid var(--text-primary);
+    font-weight: 500;
+}
+
+[data-theme="swiss"] .form-input:focus,
+[data-theme="swiss"] .form-select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: none;
+}
+
+[data-theme="swiss"] .btn {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-width: 2px;
+}
+
+[data-theme="swiss"] .btn-primary {
+    background: var(--accent-primary);
+    color: var(--bg-primary);
+    border-color: var(--accent-primary);
+}
+
+[data-theme="swiss"] .btn-primary:hover {
+    background: var(--text-primary);
+    border-color: var(--text-primary);
+}
+
+[data-theme="swiss"] .btn-secondary {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border-color: var(--text-primary);
+}
+
+[data-theme="swiss"] .btn-secondary:hover {
+    background: var(--text-primary);
+    color: var(--bg-primary);
+}
+
+[data-theme="swiss"] .card,
+[data-theme="swiss"] .chart-container,
+[data-theme="swiss"] .data-table-container {
+    background: var(--bg-primary);
+    border: 2px solid var(--text-primary);
+}
+
+[data-theme="swiss"] .chart-title,
+[data-theme="swiss"] .sidebar-title,
+[data-theme="swiss"] .data-table-title {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--text-primary);
+}
+
+[data-theme="swiss"] .status-dot {
+    background: var(--text-muted);
+    box-shadow: none;
+}
+
+[data-theme="swiss"] .status-dot.connected,
+[data-theme="swiss"] .status-dot.tracking {
+    background: var(--accent-primary);
+    box-shadow: none;
+}
+
+[data-theme="swiss"] .greek {
+    background: var(--bg-primary);
+    border: 1px solid var(--text-primary);
+}
+
+[data-theme="swiss"] .greek-label {
+    font-weight: 700;
+    letter-spacing: 0.1em;
+}
+
+[data-theme="swiss"] .greek-value {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+[data-theme="swiss"] .metric-delta.positive::before {
+    content: "+";
+}
+
+[data-theme="swiss"] .metric-delta.positive {
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+[data-theme="swiss"] .metric-delta.negative {
+    color: var(--accent-primary);
+    font-weight: 700;
+}
+
+[data-theme="swiss"] .data-table {
+    border-collapse: collapse;
+}
+
+[data-theme="swiss"] .data-table th {
+    background: var(--text-primary);
+    color: var(--bg-primary);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border: none;
+}
+
+[data-theme="swiss"] .data-table td {
+    border-bottom: 1px solid var(--text-primary);
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+[data-theme="swiss"] .contract-info {
+    background: var(--bg-primary);
+    border: 2px solid var(--text-primary);
+}
+
+[data-theme="swiss"] .contract-info-label {
+    font-weight: 700;
+    letter-spacing: 0.1em;
+}
+
+[data-theme="swiss"] .contract-info-value {
+    font-weight: 500;
+}
+
+[data-theme="swiss"] .divider {
+    height: 2px;
+    background: var(--text-primary);
+}
+
+[data-theme="swiss"] .empty-state {
+    color: var(--text-primary);
+}
+
+[data-theme="swiss"] .empty-state-icon {
+    color: var(--accent-primary);
+}
+
+/* Theme switcher button styles */
+[data-theme="swiss"] .theme-btn {
+    border-width: 2px;
+}
+
+[data-theme="swiss"] .theme-btn.active {
+    border-color: var(--accent-primary);
+}
+
+/* No shadows, no gradients */
+[data-theme="swiss"] * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+}
+
+/* Scrollbar */
+[data-theme="swiss"]::-webkit-scrollbar {
+    width: 12px;
+}
+
+[data-theme="swiss"]::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+    border-left: 2px solid var(--text-primary);
+}
+
+[data-theme="swiss"]::-webkit-scrollbar-thumb {
+    background: var(--text-primary);
+}
