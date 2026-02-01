@@ -194,6 +194,37 @@ body {
     background: linear-gradient(135deg, #fff 50%, #ff0000 50%);
 }
 
+/* Theme button tooltips */
+.theme-btn {
+    position: relative;
+}
+
+.theme-btn::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 8px;
+    padding: 4px 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.625rem;
+    font-family: var(--font-body);
+    color: var(--text-primary);
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    z-index: 100;
+}
+
+.theme-btn:hover::after {
+    opacity: 1;
+    visibility: visible;
+}
+
 /* Sidebar Components */
 .sidebar-section {
     margin-bottom: var(--space-lg);
@@ -589,10 +620,14 @@ body {
 @media (max-width: 1024px) {
     .app {
         grid-template-columns: 1fr;
+        grid-template-rows: auto auto 1fr;
     }
 
     .sidebar {
-        display: none;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+        max-height: 400px;
+        overflow-y: auto;
     }
 
     .metrics-bar {

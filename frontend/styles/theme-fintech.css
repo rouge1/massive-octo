@@ -67,28 +67,34 @@
 
 [data-theme="fintech"] .form-input,
 [data-theme="fintech"] .form-select {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--bg-card);
     border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
     transition: all 0.3s ease;
+}
+
+[data-theme="fintech"] .form-select option {
+    background: var(--bg-card);
+    color: var(--text-primary);
 }
 
 [data-theme="fintech"] .form-input:focus,
 [data-theme="fintech"] .form-select:focus {
-    background: rgba(124, 58, 237, 0.05);
-    border-color: var(--accent-primary);
-    box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.15);
+    background: var(--bg-card);
+    border-color: var(--accent-success);
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.15);
 }
 
 [data-theme="fintech"] .btn-primary {
-    background: linear-gradient(135deg, var(--accent-primary) 0%, #5b21b6 100%);
+    background: linear-gradient(135deg, var(--accent-success) 0%, #059669 100%);
     border: none;
-    box-shadow: 0 4px 15px rgba(124, 58, 237, 0.4);
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
     transition: all 0.3s ease;
 }
 
 [data-theme="fintech"] .btn-primary:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(124, 58, 237, 0.5);
+    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
 }
 
 [data-theme="fintech"] .card,

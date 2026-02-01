@@ -76,7 +76,13 @@
 [data-theme="swiss"] .form-select {
     background: var(--bg-primary);
     border: 2px solid var(--text-primary);
+    color: var(--text-primary);
     font-weight: 500;
+}
+
+[data-theme="swiss"] .form-select option {
+    background: var(--bg-primary);
+    color: var(--text-primary);
 }
 
 [data-theme="swiss"] .form-input:focus,

@@ -36,15 +36,17 @@ const chartColors = {
         spread: '#ff3333',
         grid: '#222222',
         bg: '#111111',
-        text: '#ffffff'
+        text: '#ffffff',
+        hoverlabel: { bgcolor: '#111111', font: { color: '#ffffff' } }
     },
     fintech: {
-        premium: '#7c3aed',
+        premium: '#10b981',
         stock: '#06b6d4',
         spread: '#ef4444',
         grid: '#2a2a38',
         bg: '#1c1c26',
-        text: '#ffffff'
+        text: '#ffffff',
+        hoverlabel: { bgcolor: '#1c1c26', font: { color: '#ffffff' } }
     },
     retro: {
         premium: '#ffd700',
@@ -52,7 +54,8 @@ const chartColors = {
         spread: '#ff3366',
         grid: '#1a1a40',
         bg: '#12122e',
-        text: '#ffd700'
+        text: '#ffd700',
+        hoverlabel: { bgcolor: '#12122e', font: { color: '#ffd700' } }
     },
     swiss: {
         premium: '#ff0000',
@@ -60,7 +63,8 @@ const chartColors = {
         spread: '#888888',
         grid: '#dddddd',
         bg: '#ffffff',
-        text: '#000000'
+        text: '#000000',
+        hoverlabel: { bgcolor: '#ffffff', font: { color: '#000000' } }
     }
 };
 
@@ -97,15 +101,23 @@ function Header({ connectionStatus, isTracking }) {
                     {getStatusText()}
                 </div>
                 <div className="theme-switcher">
-                    {themes.map(t => (
-                        <button
-                            key={t}
-                            className={`theme-btn ${theme === t ? 'active' : ''}`}
-                            data-theme={t}
-                            onClick={() => setTheme(t)}
-                            title={t.charAt(0).toUpperCase() + t.slice(1)}
-                        />
-                    ))}
+                    {themes.map(t => {
+                        const names = {
+                            bloomberg: 'Bloomberg',
+                            fintech: 'Fintech',
+                            retro: 'Retro',
+                            swiss: 'Swiss'
+                        };
+                        return (
+                            <button
+                                key={t}
+                                className={`theme-btn ${theme === t ? 'active' : ''}`}
+                                data-theme={t}
+                                data-tooltip={names[t]}
+                                onClick={() => setTheme(t)}
+                            />
+                        );
+                    })}
                 </div>
             </div>
         </header>
@@ -555,6 +567,7 @@ function Chart({ data }) {
             paper_bgcolor: 'transparent',
             plot_bgcolor: colors.bg,
             font: { color: colors.text },
+            hoverlabel: colors.hoverlabel,
             legend: {
                 orientation: 'h',
                 y: 1.12,

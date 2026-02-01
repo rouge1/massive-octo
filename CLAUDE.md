@@ -142,6 +142,46 @@ Theme preference is persisted in localStorage.
 - [ ] CSV export
 - [ ] Mobile responsive improvements
 
+## Common Pitfalls & Solutions
+
+### yfinance + JSON Serialization
+yfinance returns numpy types (`int64`, `float64`) that aren't JSON serializable. Always convert before sending over WebSocket:
+```python
+def to_native(val):
+    if val is None:
+        return None
+    try:
+        return val.item()  # numpy -> Python native
+    except (AttributeError, ValueError):
+        return val
+```
+
+### Dropdown Styling Across Themes
+Browser `<option>` elements ignore parent CSS. Must explicitly style:
+```css
+[data-theme="mytheme"] .form-select option {
+    background: var(--bg-card);
+    color: var(--text-primary);
+}
+```
+
+### Plotly Chart Theming
+Plotly tooltips need explicit `hoverlabel` config per theme:
+```javascript
+hoverlabel: { bgcolor: '#111111', font: { color: '#ffffff' } }
+```
+
+### Responsive Design
+Never use `display: none` on critical UI (sidebar). Reflow layout instead:
+```css
+@media (max-width: 1024px) {
+    .sidebar {
+        border-bottom: 1px solid var(--border-color);
+        max-height: 400px;
+    }
+}
+```
+
 ## Legacy Streamlit App
 The original Streamlit app is preserved in the root directory (`app.py`, `api_client.py`). To run:
 ```bash

@@ -157,20 +157,30 @@ class ConnectionManager:
                             ticker, contract, expiration, strike, put_call
                         )
 
+                        # Convert numpy types to native Python types for JSON serialization
+                        def to_native(val):
+                            if val is None:
+                                return None
+                            try:
+                                # Handle numpy int/float types
+                                return val.item()
+                            except (AttributeError, ValueError):
+                                return val
+
                         snapshot = {
                             "type": "snapshot",
                             "timestamp": timestamp.isoformat(),
-                            "premium": premium,
-                            "stock_price": stock_price,
-                            "spread_pct": spread_pct,
+                            "premium": to_native(premium),
+                            "stock_price": to_native(stock_price),
+                            "spread_pct": to_native(spread_pct),
                             "option_data": {
-                                "bid": option_data["bid"],
-                                "ask": option_data["ask"],
-                                "mid": option_data["mid"],
-                                "last": option_data["last"],
-                                "volume": option_data["volume"],
-                                "open_interest": option_data["open_interest"],
-                                "iv": option_data["iv"],
+                                "bid": to_native(option_data["bid"]),
+                                "ask": to_native(option_data["ask"]),
+                                "mid": to_native(option_data["mid"]),
+                                "last": to_native(option_data["last"]),
+                                "volume": int(option_data["volume"]) if option_data["volume"] is not None else None,
+                                "open_interest": int(option_data["open_interest"]) if option_data["open_interest"] is not None else None,
+                                "iv": to_native(option_data["iv"]),
                             },
                         }
 

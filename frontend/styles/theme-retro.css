@@ -94,8 +94,13 @@
 [data-theme="retro"] .form-input,
 [data-theme="retro"] .form-select {
     font-family: var(--font-body);
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--bg-card);
     border: 1px solid var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+[data-theme="retro"] .form-select option {
+    background: var(--bg-card);
     color: var(--accent-primary);
 }
 

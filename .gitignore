@@ -45,4 +45,5 @@ Thumbs.db
 *.log
 
 # Local config
-.claude/
+.claude/*
+

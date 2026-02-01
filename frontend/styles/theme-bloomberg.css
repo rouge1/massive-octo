@@ -53,6 +53,17 @@
     text-shadow: 0 0 8px rgba(0, 255, 0, 0.5);
 }
 
+[data-theme="bloomberg"] .form-input,
+[data-theme="bloomberg"] .form-select {
+    background: var(--bg-card);
+    color: var(--text-primary);
+}
+
+[data-theme="bloomberg"] .form-select option {
+    background: var(--bg-card);
+    color: var(--text-primary);
+}
+
 [data-theme="bloomberg"] .form-input:focus,
 [data-theme="bloomberg"] .form-select:focus {
     box-shadow: 0 0 0 1px var(--accent-primary), 0 0 10px rgba(0, 255, 0, 0.3);
