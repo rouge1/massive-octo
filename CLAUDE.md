@@ -24,6 +24,12 @@ conda activate mass
 │       ├── theme-fintech.css    # Modern fintech theme
 │       ├── theme-retro.css      # Retro-futuristic CRT theme
 │       └── theme-swiss.css      # Minimal Swiss/brutalist theme
+├── config/                  # Runtime files (gitignored)
+│   ├── backend.pid          # Backend process ID
+│   ├── frontend.pid         # Frontend process ID
+│   ├── backend.log          # Backend output log
+│   └── frontend.log         # Frontend output log
+├── mass.sh                  # Start/stop/status script
 ├── app.py                   # Legacy Streamlit dashboard (kept for reference)
 ├── api_client.py            # Legacy API client (kept for reference)
 ├── requirements.txt         # Legacy dependencies
@@ -32,21 +38,46 @@ conda activate mass
 
 ## Running the App
 
-### Backend (FastAPI)
+### Quick Start (Recommended)
+```bash
+conda activate mass
+cd /data/python/massive
+./mass.sh start      # Start both backend and frontend
+./mass.sh status     # Check if services are running
+./mass.sh stop       # Stop both services
+```
+
+Then open http://localhost:3000 in your browser.
+
+### Manual Start
+**Backend (FastAPI):**
 ```bash
 conda activate mass
 cd /data/python/massive/backend
-conda install -c conda-forge fastapi uvicorn websockets yfinance
 uvicorn main:app --reload --port 8000
 ```
 
-### Frontend (React via CDN)
+**Frontend (React via CDN):**
 ```bash
 cd /data/python/massive/frontend
 python -m http.server 3000
 ```
 
-Then open http://localhost:3000 in your browser.
+### First-Time Setup
+```bash
+conda activate mass
+conda install -c conda-forge fastapi uvicorn websockets yfinance
+```
+
+## Seeing Changes After Edits
+
+| Change Type | How to See It |
+|-------------|---------------|
+| Frontend (JS/CSS/HTML) | Hard refresh browser: `Ctrl + Shift + R` |
+| Backend (Python) | Auto-reloads (uvicorn `--reload` flag) |
+| mass.sh script | Run `./mass.sh stop && ./mass.sh start` |
+
+**Note:** Regular refresh (`F5` or `Ctrl + R`) may serve cached files. Always use hard refresh for frontend changes.
 
 ## API Endpoints
 
@@ -126,6 +157,7 @@ Theme preference is persisted in localStorage.
 - Spread % subplot
 - Option greeks display (bid, ask, IV, volume, OI)
 - Theme persistence via localStorage
+- Form state persistence (ticker, strike, contract survive refresh)
 - Responsive layout
 - Keeps last 100 data points
 
@@ -136,6 +168,7 @@ Theme preference is persisted in localStorage.
 - [x] Plotly chart integration
 - [x] 4 theme CSS files
 - [x] Theme switcher with localStorage persistence
+- [x] Form state persistence (ticker, strike, contract restored on refresh)
 - [ ] Multi-contract watchlist
 - [ ] Browser notifications for spread alerts
 - [ ] Historical data persistence
@@ -181,6 +214,34 @@ Never use `display: none` on critical UI (sidebar). Reflow layout instead:
     }
 }
 ```
+
+### localStorage Restore with useEffect Race Condition
+When restoring state from localStorage on mount, a save `useEffect` can overwrite saved data before restoration completes:
+
+**Problem:**
+```javascript
+// This runs immediately on mount with null values, wiping saved state
+useEffect(() => {
+    saveFormState({ ticker, strike: selectedStrike }); // selectedStrike is null!
+}, [ticker, selectedStrike]);
+```
+
+**Solution:** Skip the first render using a ref:
+```javascript
+const hasMountedRef = useRef(false);
+useEffect(() => {
+    if (!hasMountedRef.current) {
+        hasMountedRef.current = true;
+        return; // Skip first render
+    }
+    saveFormState({ ticker, strike: selectedStrike });
+}, [ticker, selectedStrike]);
+```
+
+### localStorage Keys
+The app uses these localStorage keys:
+- `theme` - Selected theme name (bloomberg, fintech, retro, swiss)
+- `optionsTrackerFormState` - Form state JSON (ticker, putCall, strike, contract)
 
 ## Legacy Streamlit App
 The original Streamlit app is preserved in the root directory (`app.py`, `api_client.py`). To run:

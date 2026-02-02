@@ -44,6 +44,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Config directory (pid/log files)
+config/
+
 # Local config
 .claude/*
 

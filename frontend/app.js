@@ -124,10 +124,31 @@ function Header({ connectionStatus, isTracking }) {
     );
 }
 
+// LocalStorage helper for form state
+const FORM_STATE_KEY = 'optionsTrackerFormState';
+
+function loadFormState() {
+    try {
+        const saved = localStorage.getItem(FORM_STATE_KEY);
+        return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function saveFormState(state) {
+    try {
+        localStorage.setItem(FORM_STATE_KEY, JSON.stringify(state));
+    } catch (e) {
+        // Silent fail - localStorage may be unavailable
+    }
+}
+
 // Sidebar Component
 function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading }) {
-    const [ticker, setTicker] = useState('AAPL');
-    const [putCall, setPutCall] = useState('call');
+    const savedState = loadFormState();
+    const [ticker, setTicker] = useState(savedState?.ticker || 'AAPL');
+    const [putCall, setPutCall] = useState(savedState?.putCall || 'call');
     const [strikes, setStrikes] = useState([]);
     const [selectedStrike, setSelectedStrike] = useState(null);
     const [contracts, setContracts] = useState([]);
@@ -135,6 +156,67 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading }) {
     const [stockPrice, setStockPrice] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+
+    // Save form state when values change (skip initial render)
+    const hasMountedRef = useRef(false);
+    useEffect(() => {
+        if (!hasMountedRef.current) {
+            hasMountedRef.current = true;
+            return; // Skip first render
+        }
+        saveFormState({
+            ticker,
+            putCall,
+            strike: selectedStrike,
+            contract: selectedContract
+        });
+    }, [ticker, putCall, selectedStrike, selectedContract]);
+
+    // Auto-load strikes on mount if we have saved state
+    const initialLoadRef = useRef(false);
+    useEffect(() => {
+        const saved = loadFormState();
+        if (saved?.ticker && saved?.strike && !initialLoadRef.current) {
+            initialLoadRef.current = true;
+            loadStrikesWithRestore();
+        }
+    }, []); // Run once on mount
+
+    const loadStrikesWithRestore = async () => {
+        setLoading(true);
+        setError(null);
+        const saved = loadFormState();
+
+        try {
+            const res = await fetch(`${API_BASE}/api/strikes/${ticker.toUpperCase()}/${putCall}`);
+            if (!res.ok) throw new Error('Failed to load strikes');
+            const data = await res.json();
+            setStrikes(data.strikes);
+            setStockPrice(data.stock_price);
+
+            // Restore saved strike
+            if (saved?.strike && data.strikes.includes(saved.strike)) {
+                setSelectedStrike(saved.strike);
+
+                // Also load contracts if we have a saved contract
+                if (saved?.contract?.ticker) {
+                    const contractRes = await fetch(`${API_BASE}/api/contracts/${ticker.toUpperCase()}/${saved.strike}/${putCall}`);
+                    if (contractRes.ok) {
+                        const contractData = await contractRes.json();
+                        setContracts(contractData.contracts);
+                        const matchingContract = contractData.contracts.find(c => c.ticker === saved.contract.ticker);
+                        if (matchingContract) {
+                            setSelectedContract(matchingContract);
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const loadStrikes = async () => {
         setLoading(true);
@@ -150,6 +232,12 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading }) {
             const data = await res.json();
             setStrikes(data.strikes);
             setStockPrice(data.stock_price);
+
+            // Restore saved strike if it exists in the loaded strikes
+            const saved = loadFormState();
+            if (saved?.strike && data.strikes.includes(saved.strike)) {
+                setSelectedStrike(saved.strike);
+            }
         } catch (e) {
             setError(e.message);
         } finally {
@@ -169,6 +257,15 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading }) {
             if (!res.ok) throw new Error('Failed to load contracts');
             const data = await res.json();
             setContracts(data.contracts);
+
+            // Restore saved contract if it exists in the loaded contracts
+            const saved = loadFormState();
+            if (saved?.contract?.ticker) {
+                const matchingContract = data.contracts.find(c => c.ticker === saved.contract.ticker);
+                if (matchingContract) {
+                    setSelectedContract(matchingContract);
+                }
+            }
         } catch (e) {
             setError(e.message);
         } finally {
@@ -195,6 +292,8 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading }) {
         setSelectedStrike(null);
         setSelectedContract(null);
         setStockPrice(null);
+        // Clear saved form state except ticker/putCall
+        saveFormState({ ticker, putCall, strike: null, contract: null });
     };
 
     return (
