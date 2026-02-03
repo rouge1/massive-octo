@@ -69,7 +69,7 @@ const chartColors = {
 };
 
 // Header Component
-function Header({ connectionStatus, isTracking, sidebarVisible, onToggleSidebar }) {
+function Header({ connectionStatus, isTracking, sidebarVisible, onToggleSidebar, marketStatus }) {
     const { theme, setTheme } = useTheme();
     const themes = ['bloomberg', 'fintech', 'retro', 'swiss'];
 
@@ -84,6 +84,22 @@ function Header({ connectionStatus, isTracking, sidebarVisible, onToggleSidebar 
         if (connectionStatus === 'connected') return 'Connected';
         if (connectionStatus === 'connecting') return 'Connecting...';
         return 'Disconnected';
+    };
+
+    const getMarketStatusText = () => {
+        if (!marketStatus) return '';
+        if (marketStatus.is_open) return `Market Open`;
+        const statusMap = {
+            'pre_market': 'Pre-Market',
+            'after_market': 'After Hours',
+            'closed_weekend': 'Market Closed'
+        };
+        return statusMap[marketStatus.status] || 'Market Closed';
+    };
+
+    const getMarketStatusClass = () => {
+        if (!marketStatus) return '';
+        return marketStatus.is_open ? 'connected' : '';
     };
 
     return (
@@ -105,6 +121,12 @@ function Header({ connectionStatus, isTracking, sidebarVisible, onToggleSidebar 
                 </div>
             </div>
             <div className="header-controls">
+                {marketStatus && (
+                    <div className="connection-status">
+                        <span className={`status-dot ${getMarketStatusClass()}`}></span>
+                        {getMarketStatusText()}
+                    </div>
+                )}
                 <div className="connection-status">
                     <span className={`status-dot ${getStatusClass()}`}></span>
                     {getStatusText()}
@@ -800,8 +822,26 @@ function App() {
     const [config, setConfig] = useState(null);
     const [data, setData] = useState([]);
     const [sidebarVisible, setSidebarVisible] = useState(true);
+    const [marketStatus, setMarketStatus] = useState(null);
     const wsRef = useRef(null);
     const configRef = useRef(null); // Track current config for saving snapshots
+
+    // Fetch market status on mount and every 5 minutes
+    useEffect(() => {
+        const fetchMarketStatus = async () => {
+            try {
+                const res = await fetch(`${API_BASE}/api/market/status`);
+                const status = await res.json();
+                setMarketStatus(status);
+            } catch (e) {
+                console.error('Failed to fetch market status:', e);
+            }
+        };
+
+        fetchMarketStatus();
+        const interval = setInterval(fetchMarketStatus, 300000); // 5 minutes
+        return () => clearInterval(interval);
+    }, []);
 
     // Auto-hide sidebar when tracking starts
     useEffect(() => {
@@ -863,16 +903,16 @@ function App() {
 
                 setData(prev => {
                     const newData = [...prev, msg];
-                    // Keep only last 100 data points in memory
-                    if (newData.length > 100) {
-                        return newData.slice(-100);
-                    }
                     return newData;
                 });
             } else if (msg.type === 'tracking_started') {
                 setIsTracking(true);
             } else if (msg.type === 'tracking_stopped') {
                 setIsTracking(false);
+            } else if (msg.type === 'market_closed') {
+                // Update market status when we get this message
+                setMarketStatus(msg.market_status);
+                console.log('Market closed:', msg.message);
             } else if (msg.type === 'error') {
                 console.error('Server error:', msg.message);
             }
@@ -912,8 +952,8 @@ function App() {
             const savedData = await loadSavedData(trackingConfig);
             console.log('Loaded', savedData.length, 'snapshots from file');
             
-            // Keep only last 100 points in memory and set immediately
-            setData(savedData.slice(-100));
+            // Load all saved data for the day
+            setData(savedData);
 
             // Now start real-time tracking which will append to this data
             wsRef.current.send(JSON.stringify({
@@ -938,6 +978,7 @@ function App() {
                     isTracking={isTracking}
                     sidebarVisible={sidebarVisible}
                     onToggleSidebar={() => setSidebarVisible(!sidebarVisible)}
+                    marketStatus={marketStatus}
                 />
                 <Sidebar
                     onStartTracking={handleStartTracking}

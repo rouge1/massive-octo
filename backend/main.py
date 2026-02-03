@@ -22,6 +22,7 @@ from api_client import (
     list_available_contracts,
     get_stock_price,
     fetch_snapshot,
+    is_market_open,
 )
 
 app = FastAPI(
@@ -125,6 +126,12 @@ async def get_price(ticker: str):
     )
 
 
+@app.get("/api/market/status")
+async def get_market_status():
+    """Get current market status (open/closed)."""
+    return is_market_open()
+
+
 # Data Persistence Endpoints
 def get_data_file(ticker: str, strike: float, put_call: str) -> Path:
     """Get the data file path for a contract."""
@@ -222,6 +229,20 @@ class ConnectionManager:
             try:
                 while True:
                     try:
+                        # Check market status before fetching
+                        market_status = is_market_open()
+                        
+                        if not market_status["is_open"]:
+                            # Send market closed status
+                            await websocket.send_json({
+                                "type": "market_closed",
+                                "market_status": market_status,
+                                "message": f"Market is {market_status['status']}. Data collection paused."
+                            })
+                            # Wait longer when market is closed (5 minutes)
+                            await asyncio.sleep(300)
+                            continue
+                        
                         timestamp, premium, stock_price, spread_pct, option_data = fetch_snapshot(
                             ticker, contract, expiration, strike, put_call
                         )

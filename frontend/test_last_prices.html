@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Last Prices Logic Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #0a0a0a;
+            color: #00ff00;
+        }
+        .test {
+            margin: 20px 0;
+            padding: 10px;
+            border: 1px solid #333;
+        }
+        .pass { color: #00ff00; }
+        .fail { color: #ff3333; }
+        pre {
+            background: #111;
+            padding: 10px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Last Prices Logic Unit Tests</h1>
+    <div id="results"></div>
+
+    <script>
+        // Test the last prices logic
+        function processLastPrices(data) {
+            return data
+                .slice()
+                .reverse()
+                .map(d => d.option_data?.last)
+                .filter(price => price !== null && price !== undefined)
+                .filter((price, index, arr) => {
+                    // Keep first item always, then only keep if price changed from previous
+                    if (index === 0) return true;
+                    return price !== arr[index - 1];
+                })
+                .map((price, index, arr) => {
+                    // Calculate trend based on next item in the filtered array
+                    const nextPrice = arr[index + 1];
+                    let trend = null;
+                    if (nextPrice !== null && nextPrice !== undefined) {
+                        if (price > nextPrice) trend = 'up';
+                        else if (price < nextPrice) trend = 'down';
+                    }
+                    return { price, trend };
+                });
+        }
+
+        function runTests() {
+            const results = [];
+
+            // Test 1: All same values should return only one
+            const test1Data = [
+                { option_data: { last: 1.5 } },
+                { option_data: { last: 1.5 } },
+                { option_data: { last: 1.5 } },
+                { option_data: { last: 1.5 } }
+            ];
+            const test1Result = processLastPrices(test1Data);
+            const test1Pass = test1Result.length === 1 && test1Result[0].price === 1.5;
+            results.push({
+                name: "Test 1: All same values",
+                input: test1Data.map(d => d.option_data.last),
+                expected: [{ price: 1.5, trend: null }],
+                actual: test1Result,
+                pass: test1Pass
+            });
+
+            // Test 2: Values that change
+            const test2Data = [
+                { option_data: { last: 1.5 } },
+                { option_data: { last: 1.5 } },
+                { option_data: { last: 1.6 } },
+                { option_data: { last: 1.6 } },
+                { option_data: { last: 1.7 } }
+            ];
+            const test2Result = processLastPrices(test2Data);
+            const test2Pass = test2Result.length === 3 && 
+                               test2Result[0].price === 1.7 &&
+                               test2Result[1].price === 1.6 &&
+                               test2Result[2].price === 1.5;
+            results.push({
+                name: "Test 2: Values that change",
+                input: test2Data.map(d => d.option_data.last),
+                expected: [
+                    { price: 1.7, trend: 'up' },
+                    { price: 1.6, trend: 'up' },
+                    { price: 1.5, trend: null }
+                ],
+                actual: test2Result,
+                pass: test2Pass
+            });
+
+            // Test 3: Up and down trends
+            const test3Data = [
+                { option_data: { last: 2.0 } },
+                { option_data: { last: 2.1 } },
+                { option_data: { last: 2.0 } },
+                { option_data: { last: 1.9 } }
+            ];
+            const test3Result = processLastPrices(test3Data);
+            const test3Pass = test3Result.length === 4 &&
+                               test3Result[0].trend === 'down' &&
+                               test3Result[1].trend === 'up' &&
+                               test3Result[2].trend === 'down';
+            results.push({
+                name: "Test 3: Up and down trends",
+                input: test3Data.map(d => d.option_data.last),
+                expected: [
+                    { price: 1.9, trend: 'down' },
+                    { price: 2.0, trend: 'up' },
+                    { price: 2.1, trend: 'down' },
+                    { price: 2.0, trend: null }
+                ],
+                actual: test3Result,
+                pass: test3Pass
+            });
+
+            // Test 4: Null values should be filtered out
+            const test4Data = [
+                { option_data: { last: 1.5 } },
+                { option_data: { last: null } },
+                { option_data: { last: 1.6 } },
+                { option_data: { last: undefined } },
+                { option_data: { last: 1.7 } }
+            ];
+            const test4Result = processLastPrices(test4Data);
+            const test4Pass = test4Result.length === 3;
+            results.push({
+                name: "Test 4: Null/undefined filtering",
+                input: test4Data.map(d => d.option_data.last),
+                expected: "3 prices (1.7, 1.6, 1.5)",
+                actual: test4Result,
+                pass: test4Pass
+            });
+
+            // Test 5: Stuck at same value (your issue)
+            const test5Data = [
+                { option_data: { last: 2.05 } },
+                { option_data: { last: 2.05 } },
+                { option_data: { last: 2.05 } },
+                { option_data: { last: 2.05 } },
+                { option_data: { last: 2.05 } },
+                { option_data: { last: 2.10 } }  // New value comes in
+            ];
+            const test5Result = processLastPrices(test5Data);
+            const test5Pass = test5Result.length === 2 &&
+                               test5Result[0].price === 2.10 &&
+                               test5Result[1].price === 2.05;
+            results.push({
+                name: "Test 5: Stuck at 2.05, then changes to 2.10",
+                input: test5Data.map(d => d.option_data.last),
+                expected: [
+                    { price: 2.10, trend: 'up' },
+                    { price: 2.05, trend: null }
+                ],
+                actual: test5Result,
+                pass: test5Pass
+            });
+
+            return results;
+        }
+
+        // Display results
+        const resultsDiv = document.getElementById('results');
+        const testResults = runTests();
+        
+        testResults.forEach(result => {
+            const div = document.createElement('div');
+            div.className = 'test';
+            div.innerHTML = `
+                <h3 class="${result.pass ? 'pass' : 'fail'}">${result.pass ? '✓' : '✗'} ${result.name}</h3>
+                <p><strong>Input:</strong> [${result.input.join(', ')}]</p>
+                <p><strong>Expected:</strong></p>
+                <pre>${JSON.stringify(result.expected, null, 2)}</pre>
+                <p><strong>Actual:</strong></p>
+                <pre>${JSON.stringify(result.actual, null, 2)}</pre>
+            `;
+            resultsDiv.appendChild(div);
+        });
+
+        // Summary
+        const passed = testResults.filter(r => r.pass).length;
+        const total = testResults.length;
+        const summary = document.createElement('div');
+        summary.className = 'test';
+        summary.innerHTML = `<h2 class="${passed === total ? 'pass' : 'fail'}">Summary: ${passed}/${total} tests passed</h2>`;
+        resultsDiv.insertBefore(summary, resultsDiv.firstChild);
+    </script>
+</body>
+</html>

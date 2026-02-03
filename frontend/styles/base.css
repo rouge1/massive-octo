@@ -190,13 +190,13 @@ body {
 }
 
 .status-dot.connected {
-    background: var(--accent-success);
-    box-shadow: 0 0 8px var(--accent-success);
+    background: #00dd00 !important;
+    box-shadow: 0 0 8px #00dd00 !important;
 }
 
 .status-dot.tracking {
-    background: var(--accent-primary);
-    box-shadow: 0 0 8px var(--accent-primary);
+    background: #00dd00 !important;
+    box-shadow: 0 0 8px #00dd00 !important;
     animation: pulse 2s infinite;
 }
 

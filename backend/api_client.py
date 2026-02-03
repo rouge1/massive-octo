@@ -3,8 +3,9 @@ Yahoo Finance API wrapper functions for options premium tracking.
 Uses yfinance library (free, no API key required).
 """
 
-from datetime import datetime, date
+from datetime import datetime, date, time
 import yfinance as yf
+import pytz
 
 
 def list_available_strikes(ticker: str, put_call: str) -> list[float]:
@@ -127,3 +128,46 @@ def fetch_snapshot(ticker: str, contract: str, expiration: str, strike: float, p
     spread_pct = (premium / stock_price) * 100 if stock_price > 0 else 0
 
     return timestamp, premium, stock_price, spread_pct, option_data
+
+
+def is_market_open() -> dict:
+    """
+    Check if US stock market is currently open.
+    
+    Returns:
+        Dict with 'is_open', 'current_time', 'market_open', 'market_close', 'status'
+    """
+    # US Eastern Time
+    et_tz = pytz.timezone('US/Eastern')
+    now_et = datetime.now(et_tz)
+    
+    # Market hours: 9:30 AM - 4:00 PM ET, Monday-Friday
+    market_open_time = time(9, 30)
+    market_close_time = time(16, 0)
+    
+    # Check if it's a weekday
+    is_weekday = now_et.weekday() < 5  # 0=Monday, 4=Friday
+    
+    # Check if within market hours
+    current_time = now_et.time()
+    is_open = is_weekday and market_open_time <= current_time < market_close_time
+    
+    # Determine status
+    if not is_weekday:
+        status = "closed_weekend"
+    elif current_time < market_open_time:
+        status = "pre_market"
+    elif current_time >= market_close_time:
+        status = "after_market"
+    else:
+        status = "open"
+    
+    return {
+        "is_open": is_open,
+        "current_time": now_et.strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "market_open": "09:30 ET",
+        "market_close": "16:00 ET",
+        "status": status,
+        "day_of_week": now_et.strftime("%A")
+    }
+
