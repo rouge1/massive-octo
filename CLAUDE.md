@@ -29,6 +29,8 @@ conda activate mass
 │   ├── frontend.pid         # Frontend process ID
 │   ├── backend.log          # Backend output log
 │   └── frontend.log         # Frontend output log
+├── data/                    # Persisted snapshot data (gitignored)
+│   └── {TICKER}_{STRIKE}_{PUTCALL}.json  # Per-contract history
 ├── mass.sh                  # Start/stop/status script
 ├── app.py                   # Legacy Streamlit dashboard (kept for reference)
 ├── api_client.py            # Legacy API client (kept for reference)
@@ -66,7 +68,7 @@ python -m http.server 3000
 ### First-Time Setup
 ```bash
 conda activate mass
-conda install -c conda-forge fastapi uvicorn websockets yfinance
+conda install -c conda-forge fastapi uvicorn websockets yfinance pytz
 ```
 
 ## Seeing Changes After Edits
@@ -85,6 +87,10 @@ conda install -c conda-forge fastapi uvicorn websockets yfinance
 - `GET /api/strikes/{ticker}/{put_call}` - Get available strike prices
 - `GET /api/contracts/{ticker}/{strike}/{put_call}` - Get available expirations
 - `GET /api/price/{ticker}` - Get current stock price
+- `GET /api/market/status` - Check if market is open/closed
+- `POST /api/data/save` - Save a snapshot to persistent storage
+- `GET /api/data/load/{ticker}/{strike}/{put_call}` - Load saved snapshots
+- `DELETE /api/data/clear/{ticker}/{strike}/{put_call}` - Clear saved data
 - `GET /docs` - OpenAPI documentation
 
 ### WebSocket Endpoint
@@ -145,6 +151,7 @@ Theme preference is persisted in localStorage.
 - uvicorn[standard]
 - websockets
 - yfinance
+- pytz (timezone handling for market hours)
 
 ### Frontend (via CDN)
 - React 18
@@ -152,15 +159,19 @@ Theme preference is persisted in localStorage.
 - Google Fonts (IBM Plex Mono, DM Sans, Space Grotesk, VT323, Share Tech Mono)
 
 ## Key Features
-- Real-time WebSocket streaming (30s intervals)
+- Real-time WebSocket streaming (30s intervals when market open, 5min when closed)
+- Market status detection (open/pre-market/after-hours/weekend)
 - Dual y-axis chart: premium + stock price
 - Option greeks display (bid, ask, IV, volume, OI)
 - Theme persistence via localStorage
 - Form state persistence (ticker, strike, contract survive refresh)
-- Toggleable sidebar (auto-hides when tracking starts)
+- Data persistence (snapshots saved to JSON files, survives restart)
+- Toggleable sidebar (fixed overlay, auto-hides when tracking starts)
 - Raw Data table expands as overlay with scrollable content
+- Metrics grid layout (5-col design with bid/ask and last price history)
+- Trend arrows on price history (up/down indicators)
 - Responsive layout
-- Keeps last 100 data points
+- Keeps last 100 data points in UI, 500 in persistent storage
 
 ## Implementation Status
 - [x] FastAPI backend with REST endpoints
@@ -172,9 +183,10 @@ Theme preference is persisted in localStorage.
 - [x] Form state persistence (ticker, strike, contract restored on refresh)
 - [x] Toggleable sidebar overlay with auto-hide on tracking
 - [x] Raw Data table as expandable overlay with scroll
+- [x] Market status detection (open/closed/pre-market/after-hours)
+- [x] Historical data persistence (JSON files)
 - [ ] Multi-contract watchlist
 - [ ] Browser notifications for spread alerts
-- [ ] Historical data persistence
 - [ ] CSV export
 
 ## Common Pitfalls & Solutions
@@ -291,6 +303,52 @@ For a sidebar that overlays content instead of taking grid space:
 }
 ```
 Control visibility with conditional rendering (`if (!visible) return null;`) rather than CSS display property.
+
+### Hard-Coded Colors for Semantic Meaning
+Theme CSS variables may not cascade properly to all elements (especially nested grids, dynamically created elements). For colors with strong semantic meaning (green=positive, red=negative), use hard-coded hex values with `!important`:
+```css
+.metric-delta.positive {
+    color: #00dd00 !important;  /* Always green */
+}
+.metric-delta.negative {
+    color: #ff3333 !important;  /* Always red */
+}
+```
+This ensures consistent meaning across all four themes without relying on `--accent-success`/`--accent-danger` variables.
+
+### Market Hours API with pytz
+When checking US market hours, always use `pytz` for proper timezone handling:
+```python
+import pytz
+from datetime import datetime, time
+
+et_tz = pytz.timezone('US/Eastern')
+now_et = datetime.now(et_tz)
+
+market_open = time(9, 30)   # 9:30 AM ET
+market_close = time(16, 0)  # 4:00 PM ET
+is_weekday = now_et.weekday() < 5
+
+is_open = is_weekday and market_open <= now_et.time() < market_close
+```
+Note: This doesn't account for market holidays. Consider using a calendar API for production.
+
+### Data Persistence File Naming
+When saving per-contract data, use a consistent naming convention:
+```python
+filename = f"{ticker.upper()}_{strike}_{put_call}.json"
+# Examples: AAPL_200_call.json, MSTR_100_put.json
+```
+Format strike as int if it's a whole number to avoid `.0` in filenames.
+
+### WebSocket Polling Rate Based on Market Status
+Adjust polling intervals based on market hours to reduce unnecessary API calls:
+```python
+if not market_status["is_open"]:
+    await asyncio.sleep(300)  # 5 minutes when closed
+else:
+    await asyncio.sleep(30)   # 30 seconds when open
+```
 
 ## Legacy Streamlit App
 The original Streamlit app is preserved in the root directory (`app.py`, `api_client.py`). To run:
