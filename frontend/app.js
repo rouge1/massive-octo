@@ -69,7 +69,7 @@ const chartColors = {
 };
 
 // Header Component
-function Header({ connectionStatus, isTracking }) {
+function Header({ connectionStatus, isTracking, sidebarVisible, onToggleSidebar }) {
     const { theme, setTheme } = useTheme();
     const themes = ['bloomberg', 'fintech', 'retro', 'swiss'];
 
@@ -88,12 +88,21 @@ function Header({ connectionStatus, isTracking }) {
 
     return (
         <header className="header">
-            <div className="logo">
-                <svg className="logo-icon" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M3 13h1v7c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-7h1a1 1 0 0 0 .4-1.92l-9-4a1 1 0 0 0-.8 0l-9 4A1 1 0 0 0 3 13zm7 6v-4h4v4h-4zm6-4h2v4h-2v-4zM6 15h2v4H6v-4z"/>
-                    <path d="M12 2L2 7l10 4.5L22 7 12 2z"/>
-                </svg>
-                Options Premium Tracker
+            <div className="header-left">
+                <button
+                    className="config-toggle-btn"
+                    onClick={onToggleSidebar}
+                    title={sidebarVisible ? 'Hide Config' : 'Show Config'}
+                >
+                    {sidebarVisible ? '\u2715' : '\u2630'}
+                </button>
+                <div className="logo">
+                    <svg className="logo-icon" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M3 13h1v7c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-7h1a1 1 0 0 0 .4-1.92l-9-4a1 1 0 0 0-.8 0l-9 4A1 1 0 0 0 3 13zm7 6v-4h4v4h-4zm6-4h2v4h-2v-4zM6 15h2v4H6v-4z"/>
+                        <path d="M12 2L2 7l10 4.5L22 7 12 2z"/>
+                    </svg>
+                    Options Premium Tracker
+                </div>
             </div>
             <div className="header-controls">
                 <div className="connection-status">
@@ -145,7 +154,7 @@ function saveFormState(state) {
 }
 
 // Sidebar Component
-function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading }) {
+function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, config, visible }) {
     const savedState = loadFormState();
     const [ticker, setTicker] = useState(savedState?.ticker || 'AAPL');
     const [putCall, setPutCall] = useState(savedState?.putCall || 'call');
@@ -296,11 +305,15 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading }) {
         saveFormState({ ticker, putCall, strike: null, contract: null });
     };
 
+    if (!visible) return null;
+
     return (
         <aside className="sidebar">
-            <div className="sidebar-section">
-                <div className="sidebar-title">Configuration</div>
+            <div className="sidebar-header">
+                <span className="sidebar-title">Configuration</span>
+            </div>
 
+            <div className="sidebar-section">
                 <div className="form-group">
                     <label className="form-label">Ticker Symbol</label>
                     <input
@@ -466,12 +479,13 @@ function ContractInfo({ config }) {
     );
 }
 
-// Metrics Bar Component
-function MetricsBar({ data }) {
+// Unified Metrics Grid Component
+function MetricsGrid({ data }) {
     if (data.length === 0) return null;
 
     const latest = data[data.length - 1];
     const prev = data.length > 1 ? data[data.length - 2] : null;
+    const od = latest.option_data;
 
     const getDelta = (current, previous, key) => {
         if (!previous) return null;
@@ -484,50 +498,6 @@ function MetricsBar({ data }) {
         return `${sign}${prefix}${delta.toFixed(2)}${suffix}`;
     };
 
-    const premiumDelta = getDelta(latest, prev, 'premium');
-    const stockDelta = getDelta(latest, prev, 'stock_price');
-    const spreadDelta = getDelta(latest, prev, 'spread_pct');
-
-    return (
-        <div className="metrics-bar">
-            <div className="metric">
-                <div className="metric-label">Option Premium (Mid)</div>
-                <div className="metric-value">${latest.premium.toFixed(2)}</div>
-                {premiumDelta !== null && (
-                    <div className={`metric-delta ${premiumDelta >= 0 ? 'positive' : 'negative'}`}>
-                        {formatDelta(premiumDelta)}
-                    </div>
-                )}
-            </div>
-            <div className="metric">
-                <div className="metric-label">Stock Price</div>
-                <div className="metric-value">${latest.stock_price.toFixed(2)}</div>
-                {stockDelta !== null && (
-                    <div className={`metric-delta ${stockDelta >= 0 ? 'positive' : 'negative'}`}>
-                        {formatDelta(stockDelta)}
-                    </div>
-                )}
-            </div>
-            <div className="metric">
-                <div className="metric-label">Spread %</div>
-                <div className="metric-value">{latest.spread_pct.toFixed(2)}%</div>
-                {spreadDelta !== null && (
-                    <div className={`metric-delta ${spreadDelta >= 0 ? 'positive' : 'negative'}`}>
-                        {formatDelta(spreadDelta, '', '%')}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-}
-
-// Greeks Bar Component
-function GreeksBar({ data }) {
-    if (data.length === 0) return null;
-
-    const latest = data[data.length - 1];
-    const od = latest.option_data;
-
     const formatValue = (val, prefix = '', suffix = '', decimals = 2) => {
         if (val === null || val === undefined) return 'N/A';
         return `${prefix}${Number(val).toFixed(decimals)}${suffix}`;
@@ -538,29 +508,103 @@ function GreeksBar({ data }) {
         return Number(val).toLocaleString();
     };
 
+    const premiumDelta = getDelta(latest, prev, 'premium');
+    const stockDelta = getDelta(latest, prev, 'stock_price');
+
+    const getDeltaClass = (delta) => {
+        if (delta === null || delta === 0) return 'neutral';
+        return delta > 0 ? 'positive' : 'negative';
+    };
+
+    // Get last prices from data array (newest first), remove duplicates, then calculate trends
+    const lastPricesWithTrend = data
+        .slice()
+        .reverse()
+        .map(d => d.option_data?.last)
+        .filter(price => price !== null && price !== undefined)
+        .filter((price, index, arr) => {
+            // Keep first item always, then only keep if price changed from previous
+            if (index === 0) return true;
+            return price !== arr[index - 1];
+        })
+        .map((price, index, arr) => {
+            // Calculate trend based on next item in the filtered array
+            const nextPrice = arr[index + 1];
+            let trend = null;
+            if (nextPrice !== null && nextPrice !== undefined) {
+                if (price > nextPrice) trend = 'up';
+                else if (price < nextPrice) trend = 'down';
+            }
+            return { price, trend };
+        });
+
     return (
-        <div className="greeks-bar">
-            <div className="greek">
-                <div className="greek-label">Bid</div>
-                <div className="greek-value">{formatValue(od.bid, '$')}</div>
+        <div className="metrics-grid">
+            {/* Row 1: Stock Price, Premium, Last */}
+            <div className="metric-cell metrics-stock">
+                <div className="metric-label">Stock Price</div>
+                <div className="metric-row">
+                    <div className="metric-value-xl">${latest.stock_price.toFixed(2)}</div>
+                    {stockDelta !== null && (
+                        <div className={`metric-delta ${getDeltaClass(stockDelta)}`}>
+                            {formatDelta(stockDelta)}
+                        </div>
+                    )}
+                </div>
             </div>
-            <div className="greek">
-                <div className="greek-label">Ask</div>
-                <div className="greek-value">{formatValue(od.ask, '$')}</div>
+
+            <div className="metric-cell metrics-premium">
+                <div className="premium-main">
+                    <div className="metric-label">Premium (Mid)</div>
+                    <div className="metric-row">
+                        <div className="metric-value-xl">${latest.premium.toFixed(2)}</div>
+                        {premiumDelta !== null && (
+                            <div className={`metric-delta ${getDeltaClass(premiumDelta)}`}>
+                                {formatDelta(premiumDelta)}
+                            </div>
+                        )}
+                    </div>
+                </div>
+                <div className="premium-bidask">
+                    <div className="bidask-row">
+                        <span className="bidask-label">BID</span>
+                        <span className="bidask-value">{formatValue(od.bid, '$')}</span>
+                    </div>
+                    <div className="bidask-row">
+                        <span className="bidask-label">ASK</span>
+                        <span className="bidask-value">{formatValue(od.ask, '$')}</span>
+                    </div>
+                </div>
             </div>
-            <div className="greek">
-                <div className="greek-label">Last</div>
-                <div className="greek-value">{formatValue(od.last, '$')}</div>
+
+            {/* Last: col 5, spans both rows */}
+            <div className="metric-cell metrics-last">
+                <div className="metric-label">Last</div>
+                <div className="last-price-list">
+                    {lastPricesWithTrend.map((item, i) => (
+                        <div key={i} className={`last-price-item ${item.trend || ''}`}>
+                            <span>${item.price.toFixed(2)}</span>
+                            {item.trend === 'up' && <span className="trend-arrow up">▲</span>}
+                            {item.trend === 'down' && <span className="trend-arrow down">▼</span>}
+                        </div>
+                    ))}
+                </div>
             </div>
-            <div className="greek">
+
+            {/* Row 2: Spread %, IV, Volume, Open Int */}
+            <div className="metric-cell metrics-greek">
+                <div className="greek-label">Spread %</div>
+                <div className="greek-value">{latest.spread_pct.toFixed(2)}%</div>
+            </div>
+            <div className="metric-cell metrics-greek">
                 <div className="greek-label">IV</div>
                 <div className="greek-value">{od.iv ? formatValue(od.iv * 100, '', '%', 1) : 'N/A'}</div>
             </div>
-            <div className="greek">
+            <div className="metric-cell metrics-greek">
                 <div className="greek-label">Volume</div>
                 <div className="greek-value">{formatInt(od.volume)}</div>
             </div>
-            <div className="greek">
+            <div className="metric-cell metrics-greek">
                 <div className="greek-label">Open Int</div>
                 <div className="greek-value">{formatInt(od.open_interest)}</div>
             </div>
@@ -580,7 +624,6 @@ function Chart({ data }) {
         const timestamps = data.map(d => new Date(d.timestamp));
         const premiums = data.map(d => d.premium);
         const stockPrices = data.map(d => d.stock_price);
-        const spreads = data.map(d => d.spread_pct);
 
         const traces = [
             {
@@ -602,45 +645,16 @@ function Chart({ data }) {
                 line: { color: colors.stock, width: 2 },
                 marker: { size: 6 },
                 yaxis: 'y2'
-            },
-            {
-                x: timestamps,
-                y: spreads,
-                name: 'Spread %',
-                type: 'scatter',
-                mode: 'lines+markers',
-                fill: 'tozeroy',
-                line: { color: colors.spread, width: 2 },
-                marker: { size: 6 },
-                fillcolor: colors.spread + '33',
-                xaxis: 'x2',
-                yaxis: 'y3'
             }
         ];
 
         const layout = {
-            grid: {
-                rows: 2,
-                columns: 1,
-                pattern: 'independent',
-                roworder: 'top to bottom'
-            },
             xaxis: {
-                domain: [0, 1],
-                showgrid: true,
-                gridcolor: colors.grid,
-                tickfont: { color: colors.text, size: 10 },
-                showticklabels: false
-            },
-            xaxis2: {
-                domain: [0, 1],
-                anchor: 'y3',
                 showgrid: true,
                 gridcolor: colors.grid,
                 tickfont: { color: colors.text, size: 10 }
             },
             yaxis: {
-                domain: [0.35, 1],
                 title: { text: 'Premium ($)', font: { color: colors.text, size: 11 } },
                 showgrid: true,
                 gridcolor: colors.grid,
@@ -648,20 +662,11 @@ function Chart({ data }) {
                 side: 'left'
             },
             yaxis2: {
-                domain: [0.35, 1],
                 title: { text: 'Stock Price ($)', font: { color: colors.text, size: 11 } },
                 showgrid: false,
                 tickfont: { color: colors.text, size: 10 },
                 side: 'right',
                 overlaying: 'y'
-            },
-            yaxis3: {
-                domain: [0, 0.25],
-                title: { text: 'Spread %', font: { color: colors.text, size: 11 } },
-                showgrid: true,
-                gridcolor: colors.grid,
-                tickfont: { color: colors.text, size: 10 },
-                anchor: 'x2'
             },
             paper_bgcolor: 'transparent',
             plot_bgcolor: colors.bg,
@@ -691,7 +696,7 @@ function Chart({ data }) {
     return (
         <div className="chart-container">
             <div className="chart-title">Premium & Stock Price</div>
-            <div ref={chartRef} style={{ width: '100%', height: '500px' }}></div>
+            <div ref={chartRef} style={{ width: '100%', height: '100%', minHeight: '250px' }}></div>
         </div>
     );
 }
@@ -702,10 +707,11 @@ function DataTable({ data }) {
 
     if (data.length === 0) return null;
 
-    const displayData = [...data].reverse().slice(0, 20);
+    // Show all data when expanded (reversed so newest first)
+    const displayData = [...data].reverse();
 
     return (
-        <div className="data-table-container">
+        <div className={`data-table-container ${isOpen ? 'expanded' : ''}`}>
             <div className="data-table-header" onClick={() => setIsOpen(!isOpen)}>
                 <span className="data-table-title">Raw Data</span>
                 <span className={`data-table-toggle ${isOpen ? 'open' : ''}`}>
@@ -715,26 +721,28 @@ function DataTable({ data }) {
                 </span>
             </div>
             {isOpen && (
-                <table className="data-table">
-                    <thead>
-                        <tr>
-                            <th>Time</th>
-                            <th>Premium ($)</th>
-                            <th>Stock ($)</th>
-                            <th>Spread (%)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {displayData.map((d, i) => (
-                            <tr key={i}>
-                                <td>{new Date(d.timestamp).toLocaleTimeString()}</td>
-                                <td>{d.premium.toFixed(2)}</td>
-                                <td>{d.stock_price.toFixed(2)}</td>
-                                <td>{d.spread_pct.toFixed(2)}</td>
+                <div className="data-table-body">
+                    <table className="data-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Premium ($)</th>
+                                <th>Stock ($)</th>
+                                <th>Spread (%)</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {displayData.map((d, i) => (
+                                <tr key={i}>
+                                    <td>{new Date(d.timestamp).toLocaleTimeString()}</td>
+                                    <td>{d.premium.toFixed(2)}</td>
+                                    <td>{d.stock_price.toFixed(2)}</td>
+                                    <td>{d.spread_pct.toFixed(2)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             )}
         </div>
     );
@@ -774,10 +782,11 @@ function MainContent({ data, config, isTracking }) {
                 </div>
             ) : (
                 <>
-                    <MetricsBar data={data} />
-                    <GreeksBar data={data} />
-                    <Chart data={data} />
-                    <DataTable data={data} />
+                    <MetricsGrid data={data} />
+                    <div className="chart-data-wrapper">
+                        <Chart data={data} />
+                        <DataTable data={data} />
+                    </div>
                 </>
             )}
         </main>
@@ -790,7 +799,49 @@ function App() {
     const [isTracking, setIsTracking] = useState(false);
     const [config, setConfig] = useState(null);
     const [data, setData] = useState([]);
+    const [sidebarVisible, setSidebarVisible] = useState(true);
     const wsRef = useRef(null);
+    const configRef = useRef(null); // Track current config for saving snapshots
+
+    // Auto-hide sidebar when tracking starts
+    useEffect(() => {
+        if (isTracking) {
+            setSidebarVisible(false);
+        }
+    }, [isTracking]);
+
+    // Save snapshot to server
+    const saveSnapshot = useCallback(async (snapshot, trackingConfig) => {
+        if (!trackingConfig) return;
+        try {
+            await fetch(`${API_BASE}/api/data/save`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...snapshot,
+                    ticker: trackingConfig.ticker,
+                    strike: trackingConfig.strike,
+                    put_call: trackingConfig.put_call
+                })
+            });
+        } catch (e) {
+            console.error('Failed to save snapshot:', e);
+        }
+    }, []);
+
+    // Load saved data from server
+    const loadSavedData = useCallback(async (trackingConfig) => {
+        try {
+            const res = await fetch(
+                `${API_BASE}/api/data/load/${trackingConfig.ticker}/${trackingConfig.strike}/${trackingConfig.put_call}`
+            );
+            const data = await res.json();
+            return data.snapshots || [];
+        } catch (e) {
+            console.error('Failed to load saved data:', e);
+            return [];
+        }
+    }, []);
 
     const connect = useCallback(() => {
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
@@ -807,9 +858,12 @@ function App() {
             const msg = JSON.parse(event.data);
 
             if (msg.type === 'snapshot') {
+                // Save snapshot to file
+                saveSnapshot(msg, configRef.current);
+
                 setData(prev => {
                     const newData = [...prev, msg];
-                    // Keep only last 100 data points
+                    // Keep only last 100 data points in memory
                     if (newData.length > 100) {
                         return newData.slice(-100);
                     }
@@ -837,7 +891,7 @@ function App() {
         };
 
         wsRef.current = ws;
-    }, []);
+    }, [saveSnapshot]);
 
     useEffect(() => {
         connect();
@@ -848,10 +902,20 @@ function App() {
         };
     }, [connect]);
 
-    const handleStartTracking = (trackingConfig) => {
+    const handleStartTracking = async (trackingConfig) => {
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             setConfig(trackingConfig);
-            setData([]);
+            configRef.current = trackingConfig;
+
+            // Load saved data for this contract BEFORE starting tracking
+            console.log('Loading saved data for:', trackingConfig);
+            const savedData = await loadSavedData(trackingConfig);
+            console.log('Loaded', savedData.length, 'snapshots from file');
+            
+            // Keep only last 100 points in memory and set immediately
+            setData(savedData.slice(-100));
+
+            // Now start real-time tracking which will append to this data
             wsRef.current.send(JSON.stringify({
                 action: 'start',
                 ...trackingConfig
@@ -869,12 +933,19 @@ function App() {
     return (
         <ThemeProvider>
             <div className="app">
-                <Header connectionStatus={connectionStatus} isTracking={isTracking} />
+                <Header
+                    connectionStatus={connectionStatus}
+                    isTracking={isTracking}
+                    sidebarVisible={sidebarVisible}
+                    onToggleSidebar={() => setSidebarVisible(!sidebarVisible)}
+                />
                 <Sidebar
                     onStartTracking={handleStartTracking}
                     onStopTracking={handleStopTracking}
                     isTracking={isTracking}
                     isLoading={false}
+                    config={config}
+                    visible={sidebarVisible}
                 />
                 <MainContent data={data} config={config} isTracking={isTracking} />
             </div>

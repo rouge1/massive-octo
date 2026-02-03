@@ -77,6 +77,7 @@ def get_option_data(ticker: str, contract: str, expiration: str, strike: float, 
         Dict with bid, ask, mid price and other data
     """
     stock = yf.Ticker(ticker)
+
     chain = stock.option_chain(expiration)
     options_df = chain.calls if put_call == 'call' else chain.puts
 

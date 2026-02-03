@@ -72,7 +72,7 @@ body {
 /* Layout */
 .app {
     display: grid;
-    grid-template-columns: 280px 1fr;
+    grid-template-columns: 1fr;
     grid-template-rows: auto 1fr;
     min-height: 100vh;
 }
@@ -82,38 +82,88 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-md) var(--space-lg);
+    padding: var(--space-xs) var(--space-lg);
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
+    position: relative;
+    z-index: 200;
 }
 
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+/* Config Toggle Button */
+.config-toggle-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.config-toggle-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-primary);
+}
+
+/* Sidebar as overlay panel */
 .sidebar {
+    position: fixed;
+    top: 36px;
+    left: 0;
+    bottom: 0;
+    width: 320px;
     background: var(--bg-secondary);
     border-right: 1px solid var(--border-color);
     padding: var(--space-lg);
     overflow-y: auto;
+    z-index: 100;
+    box-shadow: var(--shadow-lg);
+}
+
+.sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: var(--space-md);
+    margin-bottom: var(--space-md);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.btn-sm {
+    padding: var(--space-xs) var(--space-sm);
+    font-size: 0.7rem;
 }
 
 .main {
-    padding: var(--space-lg);
+    padding: var(--space-md);
     overflow-y: auto;
     background: var(--bg-primary);
+    display: flex;
+    flex-direction: column;
 }
 
 /* Header Components */
 .logo {
     font-family: var(--font-display);
-    font-size: 1.25rem;
+    font-size: 1rem;
     font-weight: 600;
     color: var(--accent-primary);
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-xs);
 }
 
 .logo-icon {
-    width: 24px;
-    height: 24px;
+    width: 18px;
+    height: 18px;
 }
 
 .header-controls {
@@ -125,16 +175,16 @@ body {
 .connection-status {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
-    font-size: 0.75rem;
+    gap: var(--space-xs);
+    font-size: 0.625rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--text-secondary);
 }
 
 .status-dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: var(--text-muted);
 }
@@ -162,8 +212,8 @@ body {
 }
 
 .theme-btn {
-    width: 28px;
-    height: 28px;
+    width: 22px;
+    height: 22px;
     border: 2px solid var(--border-color);
     border-radius: var(--border-radius);
     cursor: pointer;
@@ -237,7 +287,14 @@ body {
     text-transform: uppercase;
     letter-spacing: 0.1em;
     color: var(--text-muted);
+}
+
+.sidebar-section .sidebar-title {
     margin-bottom: var(--space-md);
+}
+
+.sidebar-header .sidebar-title {
+    margin-bottom: 0;
 }
 
 .form-group {
@@ -366,61 +423,79 @@ body {
 
 /* Metrics Bar */
 .metrics-bar {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    display: flex;
     gap: var(--space-md);
-    margin-bottom: var(--space-lg);
+    margin-bottom: var(--space-md);
+    flex-wrap: wrap;
 }
 
 .metric {
+    flex: 1;
+    min-width: 150px;
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
-    padding: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
 }
 
 .metric-label {
-    font-size: 0.75rem;
+    font-size: 0.625rem;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     margin-bottom: var(--space-xs);
 }
 
+.metric-row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-sm);
+}
+
 .metric-value {
     font-family: var(--font-mono);
-    font-size: 1.5rem;
+    font-size: 1.25rem;
     font-weight: 600;
     color: var(--text-primary);
 }
 
 .metric-delta {
     font-size: 0.75rem;
-    margin-top: var(--space-xs);
+    font-weight: 500;
 }
 
-.metric-delta.positive {
-    color: var(--accent-success);
+.metric-delta.positive,
+.metric-row .metric-delta.positive,
+.metrics-stock .metric-delta.positive,
+.metrics-premium .metric-delta.positive {
+    color: #00dd00 !important;
 }
 
-.metric-delta.negative {
-    color: var(--accent-danger);
+.metric-delta.negative,
+.metric-row .metric-delta.negative,
+.metrics-stock .metric-delta.negative,
+.metrics-premium .metric-delta.negative {
+    color: #ff3333 !important;
 }
 
 /* Greeks Bar */
 .greeks-bar {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    display: flex;
     gap: var(--space-sm);
-    margin-bottom: var(--space-lg);
+    margin-bottom: var(--space-md);
 }
 
 .greek {
+    flex: 1;
+    min-width: 0;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
-    padding: var(--space-sm) var(--space-md);
-    text-align: center;
+    padding: var(--space-xs) var(--space-sm);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
 }
 
 .greek-label {
@@ -437,23 +512,42 @@ body {
     color: var(--text-secondary);
 }
 
+/* Chart + Data Wrapper */
+.chart-data-wrapper {
+    position: relative;
+    flex: 1;
+    min-height: 300px;
+    display: flex;
+    flex-direction: column;
+}
+
 /* Chart */
 .chart-container {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
-    padding: var(--space-md);
-    margin-bottom: var(--space-lg);
+    padding: var(--space-sm) var(--space-md);
+    margin-bottom: var(--space-md);
+    flex: 1;
+    min-height: 250px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.chart-container > div:last-child {
+    flex: 1;
+    min-height: 0;
 }
 
 .chart-title {
     font-family: var(--font-display);
-    font-size: 0.75rem;
+    font-size: 0.625rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.1em;
     color: var(--text-muted);
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-xs);
 }
 
 /* Data Table */
@@ -462,13 +556,36 @@ body {
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     overflow: hidden;
+    flex-shrink: 0;
+}
+
+/* Data Table Expanded Overlay */
+.data-table-container.expanded {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Scrollable table body when expanded */
+.data-table-container.expanded .data-table-body {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.data-table-body {
+    overflow: hidden;
 }
 
 .data-table-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-md);
+    padding: var(--space-xs) var(--space-md);
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
     cursor: pointer;
@@ -529,10 +646,10 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: var(--space-xl);
+    padding: var(--space-lg);
     text-align: center;
     color: var(--text-muted);
-    min-height: 400px;
+    flex: 1;
 }
 
 .empty-state-icon {
@@ -561,18 +678,22 @@ body {
 
 /* Contract Info */
 .contract-info {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: var(--space-md);
-    margin-bottom: var(--space-lg);
-    padding: var(--space-md);
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-sm) var(--space-lg);
+    margin-bottom: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
 }
 
 .contract-info-item {
-    text-align: center;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
 }
 
 .contract-info-label {
@@ -580,7 +701,6 @@ body {
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin-bottom: var(--space-xs);
 }
 
 .contract-info-value {
@@ -616,29 +736,204 @@ body {
     background: var(--text-muted);
 }
 
+/* Main Metrics Grid - 5 columns, 2 rows */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+}
+
+.metric-cell {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: var(--space-sm) var(--space-md);
+}
+
+/* Row 1: Stock Price (cols 1-2), Premium (cols 3-4), Last (col 5, spans rows) */
+.metrics-stock {
+    grid-column: 1 / 3;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.metrics-premium {
+    grid-column: 3 / 5;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+}
+
+.premium-main {
+    flex: 1;
+}
+
+.premium-bidask {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-left: var(--space-md);
+    border-left: 1px solid var(--border-color);
+}
+
+.bidask-row {
+    display: flex;
+    gap: var(--space-sm);
+    align-items: center;
+}
+
+.bidask-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    width: 2rem;
+}
+
+.bidask-value {
+    font-family: var(--font-mono);
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+/* Last: col 5, spans both rows */
+.metrics-last {
+    grid-column: 5;
+    grid-row: 1 / 3;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    max-height: 120px;
+}
+
+.last-price-list {
+    flex: 1;
+    min-height: 0;
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    overflow-y: auto;
+}
+
+.last-price-item {
+    padding: 2px 0;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.last-price-item:first-child {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.trend-arrow {
+    font-size: 0.7rem;
+}
+
+.trend-arrow.up {
+    color: #00dd00 !important;
+}
+
+.trend-arrow.down {
+    color: #ff3333 !important;
+}
+
+/* Row 2: Greeks (spread, iv, vol, oi) - cols 1-4 */
+.metrics-greek {
+    grid-row: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-xs) var(--space-sm);
+}
+
+.metric-value-lg {
+    font-family: var(--font-mono);
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.metric-value-xl {
+    font-family: var(--font-mono);
+    font-size: 1.8rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* Delta colors */
+.metric-delta.neutral {
+    color: var(--text-muted);
+}
+
+/* Ensure delta colors apply in metrics grid */
+.metrics-grid .metric-delta.positive {
+    color: #00dd00 !important;
+}
+
+.metrics-grid .metric-delta.negative {
+    color: #ff3333 !important;
+}
+
 /* Responsive */
-@media (max-width: 1024px) {
-    .app {
-        grid-template-columns: 1fr;
-        grid-template-rows: auto auto 1fr;
-    }
-
+@media (max-width: 768px) {
     .sidebar {
-        border-right: none;
-        border-bottom: 1px solid var(--border-color);
-        max-height: 400px;
-        overflow-y: auto;
+        width: 100%;
+        max-width: 100%;
+        right: 0;
     }
 
-    .metrics-bar {
-        grid-template-columns: 1fr;
+    .header-left {
+        gap: var(--space-sm);
     }
 
-    .greeks-bar {
-        grid-template-columns: repeat(3, 1fr);
+    .logo {
+        font-size: 1rem;
     }
 
-    .contract-info {
-        grid-template-columns: repeat(2, 1fr);
+    .theme-switcher {
+        display: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .metric {
+        min-width: 100%;
+    }
+
+    .greek {
+        min-width: calc(50% - var(--space-sm));
+    }
+
+    .metrics-grid {
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto;
+    }
+
+    .metrics-stock {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .metrics-premium {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    .metrics-last {
+        grid-column: 1 / 3;
+        grid-row: 2;
+        max-height: 100px;
+    }
+
+    .metrics-greek {
+        grid-column: span 1;
     }
 }

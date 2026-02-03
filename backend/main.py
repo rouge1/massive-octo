@@ -4,12 +4,18 @@ Provides REST endpoints for contract discovery and WebSocket for real-time strea
 """
 
 import asyncio
+import json
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+# Data storage directory
+DATA_DIR = Path(__file__).parent.parent / "data"
+DATA_DIR.mkdir(exist_ok=True)
 
 from api_client import (
     list_available_strikes,
@@ -117,6 +123,69 @@ async def get_price(ticker: str):
         price=price,
         timestamp=datetime.now().isoformat(),
     )
+
+
+# Data Persistence Endpoints
+def get_data_file(ticker: str, strike: float, put_call: str) -> Path:
+    """Get the data file path for a contract."""
+    # Format strike as int if it's a whole number, otherwise use float
+    strike_str = str(int(strike)) if strike == int(strike) else str(strike)
+    filename = f"{ticker.upper()}_{strike_str}_{put_call}.json"
+    return DATA_DIR / filename
+
+
+@app.post("/api/data/save")
+async def save_snapshot(snapshot: dict):
+    """Save a snapshot to the data file."""
+    ticker = snapshot.get("ticker", "").upper()
+    strike = snapshot.get("strike", 0)
+    put_call = snapshot.get("put_call", "call")
+
+    data_file = get_data_file(ticker, strike, put_call)
+
+    # Load existing data or start fresh
+    if data_file.exists():
+        with open(data_file, "r") as f:
+            data = json.load(f)
+    else:
+        data = {"ticker": ticker, "strike": strike, "put_call": put_call, "snapshots": []}
+
+    # Add new snapshot (exclude meta fields)
+    snapshot_data = {k: v for k, v in snapshot.items() if k not in ("ticker", "strike", "put_call")}
+    data["snapshots"].append(snapshot_data)
+
+    # Keep last 500 snapshots
+    data["snapshots"] = data["snapshots"][-500:]
+
+    # Save
+    with open(data_file, "w") as f:
+        json.dump(data, f, indent=2)
+
+    return {"status": "saved", "count": len(data["snapshots"])}
+
+
+@app.get("/api/data/load/{ticker}/{strike}/{put_call}")
+async def load_data(ticker: str, strike: float, put_call: str):
+    """Load saved data for a contract."""
+    data_file = get_data_file(ticker, strike, put_call)
+
+    if not data_file.exists():
+        return {"ticker": ticker.upper(), "strike": strike, "put_call": put_call, "snapshots": []}
+
+    with open(data_file, "r") as f:
+        return json.load(f)
+
+
+@app.delete("/api/data/clear/{ticker}/{strike}/{put_call}")
+async def clear_data(ticker: str, strike: float, put_call: str):
+    """Clear saved data for a contract."""
+    data_file = get_data_file(ticker, strike, put_call)
+
+    if data_file.exists():
+        data_file.unlink()
+        return {"status": "cleared"}
+
+    return {"status": "not_found"}
 
 
 # WebSocket for real-time streaming

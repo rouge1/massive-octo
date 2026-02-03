@@ -50,3 +50,5 @@ config/
 # Local config
 .claude/*
 
+#data files
+data/

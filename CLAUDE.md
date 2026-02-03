@@ -154,10 +154,11 @@ Theme preference is persisted in localStorage.
 ## Key Features
 - Real-time WebSocket streaming (30s intervals)
 - Dual y-axis chart: premium + stock price
-- Spread % subplot
 - Option greeks display (bid, ask, IV, volume, OI)
 - Theme persistence via localStorage
 - Form state persistence (ticker, strike, contract survive refresh)
+- Toggleable sidebar (auto-hides when tracking starts)
+- Raw Data table expands as overlay with scrollable content
 - Responsive layout
 - Keeps last 100 data points
 
@@ -169,11 +170,12 @@ Theme preference is persisted in localStorage.
 - [x] 4 theme CSS files
 - [x] Theme switcher with localStorage persistence
 - [x] Form state persistence (ticker, strike, contract restored on refresh)
+- [x] Toggleable sidebar overlay with auto-hide on tracking
+- [x] Raw Data table as expandable overlay with scroll
 - [ ] Multi-contract watchlist
 - [ ] Browser notifications for spread alerts
 - [ ] Historical data persistence
 - [ ] CSV export
-- [ ] Mobile responsive improvements
 
 ## Common Pitfalls & Solutions
 
@@ -215,6 +217,38 @@ Never use `display: none` on critical UI (sidebar). Reflow layout instead:
 }
 ```
 
+### Overlay Pattern for Expandable Panels
+To make a component expand as an overlay covering its sibling (e.g., data table covering chart):
+
+1. Wrap siblings in a relative container:
+```css
+.wrapper {
+    position: relative;
+    flex: 1;
+}
+```
+
+2. Use absolute positioning when expanded:
+```css
+.panel.expanded {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+}
+
+.panel.expanded .scrollable-content {
+    flex: 1;
+    overflow-y: auto;
+}
+```
+
+3. Toggle class in React:
+```javascript
+<div className={`panel ${isOpen ? 'expanded' : ''}`}>
+```
+
 ### localStorage Restore with useEffect Race Condition
 When restoring state from localStorage on mount, a save `useEffect` can overwrite saved data before restoration completes:
 
@@ -242,6 +276,21 @@ useEffect(() => {
 The app uses these localStorage keys:
 - `theme` - Selected theme name (bloomberg, fintech, retro, swiss)
 - `optionsTrackerFormState` - Form state JSON (ticker, putCall, strike, contract)
+
+### Fixed Overlay Sidebar Pattern
+For a sidebar that overlays content instead of taking grid space:
+```css
+.sidebar {
+    position: fixed;
+    top: 60px;      /* Below header */
+    left: 0;
+    bottom: 0;
+    width: 320px;
+    z-index: 100;
+    box-shadow: var(--shadow-lg);
+}
+```
+Control visibility with conditional rendering (`if (!visible) return null;`) rather than CSS display property.
 
 ## Legacy Streamlit App
 The original Streamlit app is preserved in the root directory (`app.py`, `api_client.py`). To run:
