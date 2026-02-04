@@ -30,7 +30,8 @@ conda activate mass
 │   ├── backend.log          # Backend output log
 │   └── frontend.log         # Frontend output log
 ├── data/                    # Persisted snapshot data (gitignored)
-│   └── {TICKER}_{STRIKE}_{PUTCALL}.json  # Per-contract history
+│   └── {TICKER}_{STRIKE}_{PUTCALL}_{YYYY-MM-DD}.json  # Per-contract per-day history
+├── migrate_data.py          # One-time migration script for legacy data
 ├── mass.sh                  # Start/stop/status script
 ├── app.py                   # Legacy Streamlit dashboard (kept for reference)
 ├── api_client.py            # Legacy API client (kept for reference)
@@ -88,9 +89,10 @@ conda install -c conda-forge fastapi uvicorn websockets yfinance pytz
 - `GET /api/contracts/{ticker}/{strike}/{put_call}` - Get available expirations
 - `GET /api/price/{ticker}` - Get current stock price
 - `GET /api/market/status` - Check if market is open/closed
-- `POST /api/data/save` - Save a snapshot to persistent storage
-- `GET /api/data/load/{ticker}/{strike}/{put_call}` - Load saved snapshots
-- `DELETE /api/data/clear/{ticker}/{strike}/{put_call}` - Clear saved data
+- `POST /api/data/save` - Save a snapshot to date-specific persistent storage
+- `GET /api/data/load/{ticker}/{strike}/{put_call}?date=YYYY-MM-DD` - Load saved snapshots (defaults to today)
+- `GET /api/data/dates/{ticker}/{strike}/{put_call}` - Get list of available dates (newest first)
+- `DELETE /api/data/clear/{ticker}/{strike}/{put_call}?date=YYYY-MM-DD` - Clear saved data (specific date or all)
 - `GET /docs` - OpenAPI documentation
 
 ### WebSocket Endpoint
@@ -171,7 +173,8 @@ Theme preference is persisted in localStorage.
 - Metrics grid layout (5-col design with bid/ask and last price history)
 - Trend arrows on price history (up/down indicators)
 - Responsive layout
-- Keeps last 100 data points in UI, 500 in persistent storage
+- Unlimited snapshots per day in persistent storage (date-partitioned files)
+- Day navigator to browse historical data
 
 ## Implementation Status
 - [x] FastAPI backend with REST endpoints
@@ -334,12 +337,19 @@ is_open = is_weekday and market_open <= now_et.time() < market_close
 Note: This doesn't account for market holidays. Consider using a calendar API for production.
 
 ### Data Persistence File Naming
-When saving per-contract data, use a consistent naming convention:
+Data is stored in date-partitioned files for each contract:
 ```python
-filename = f"{ticker.upper()}_{strike}_{put_call}.json"
-# Examples: AAPL_200_call.json, MSTR_100_put.json
+filename = f"{ticker.upper()}_{strike}_{put_call}_{for_date.isoformat()}.json"
+# Examples: AAPL_200_call_2026-02-04.json, MSTR_100_put_2026-02-03.json
 ```
 Format strike as int if it's a whole number to avoid `.0` in filenames.
+
+### Migrating Legacy Data
+If you have legacy files without dates in the filename, run the migration script:
+```bash
+python migrate_data.py
+```
+This groups snapshots by date, creates new date-specific files, and renames legacy files to `.json.bak`.
 
 ### WebSocket Polling Rate Based on Market Status
 Adjust polling intervals based on market hours to reduce unnecessary API calls:

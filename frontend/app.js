@@ -176,7 +176,7 @@ function saveFormState(state) {
 }
 
 // Sidebar Component
-function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, config, visible }) {
+function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, config, visible, onLoadHistoricalDate }) {
     const savedState = loadFormState();
     const [ticker, setTicker] = useState(savedState?.ticker || 'AAPL');
     const [putCall, setPutCall] = useState(savedState?.putCall || 'call');
@@ -187,6 +187,7 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, confi
     const [stockPrice, setStockPrice] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [historicalDates, setHistoricalDates] = useState([]);
 
     // Save form state when values change (skip initial render)
     const hasMountedRef = useRef(false);
@@ -240,6 +241,17 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, confi
                             setSelectedContract(matchingContract);
                         }
                     }
+
+                    // Also fetch historical dates for this strike/type combo
+                    try {
+                        const datesRes = await fetch(`${API_BASE}/api/data/dates/${ticker.toUpperCase()}/${saved.strike}/${putCall}`);
+                        if (datesRes.ok) {
+                            const datesData = await datesRes.json();
+                            setHistoricalDates(datesData.dates || []);
+                        }
+                    } catch (e) {
+                        console.error('Failed to fetch historical dates:', e);
+                    }
                 }
             }
         } catch (e) {
@@ -282,6 +294,7 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, confi
         setError(null);
         setContracts([]);
         setSelectedContract(null);
+        setHistoricalDates([]);
 
         try {
             const res = await fetch(`${API_BASE}/api/contracts/${ticker.toUpperCase()}/${selectedStrike}/${putCall}`);
@@ -296,6 +309,17 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, confi
                 if (matchingContract) {
                     setSelectedContract(matchingContract);
                 }
+            }
+
+            // Fetch historical dates for this strike/type combo
+            try {
+                const datesRes = await fetch(`${API_BASE}/api/data/dates/${ticker.toUpperCase()}/${selectedStrike}/${putCall}`);
+                if (datesRes.ok) {
+                    const datesData = await datesRes.json();
+                    setHistoricalDates(datesData.dates || []);
+                }
+            } catch (e) {
+                console.error('Failed to fetch historical dates:', e);
             }
         } catch (e) {
             setError(e.message);
@@ -323,8 +347,28 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, confi
         setSelectedStrike(null);
         setSelectedContract(null);
         setStockPrice(null);
+        setHistoricalDates([]);
         // Clear saved form state except ticker/putCall
         saveFormState({ ticker, putCall, strike: null, contract: null });
+    };
+
+    const handleHistoricalDateClick = (dateStr) => {
+        if (!selectedContract) return;
+        const trackingConfig = {
+            ticker: ticker.toUpperCase(),
+            contract: selectedContract.ticker,
+            expiration: selectedContract.expiration,
+            strike: selectedStrike,
+            put_call: putCall,
+            dte: selectedContract.dte
+        };
+        onLoadHistoricalDate(trackingConfig, dateStr);
+    };
+
+    // Format date for display
+    const formatDateForDisplay = (dateStr) => {
+        const d = new Date(dateStr + 'T00:00:00');
+        return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     };
 
     if (!visible) return null;
@@ -467,6 +511,24 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, confi
                     Clear Data
                 </button>
             </div>
+
+            {selectedContract && historicalDates.length > 0 && (
+                <div className="sidebar-section">
+                    <div className="divider"></div>
+                    <div className="sidebar-title">Historical Data</div>
+                    <div className="historical-dates-list">
+                        {historicalDates.map(dateStr => (
+                            <button
+                                key={dateStr}
+                                className="historical-date-btn"
+                                onClick={() => handleHistoricalDateClick(dateStr)}
+                            >
+                                {formatDateForDisplay(dateStr)}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
         </aside>
     );
 }
@@ -723,49 +785,51 @@ function Chart({ data }) {
     );
 }
 
-// Data Table Component
-function DataTable({ data }) {
-    const [isOpen, setIsOpen] = useState(false);
+// Data Table Toggle Header (separate component for header row layout)
+function DataTableToggleHeader({ isOpen, onToggle }) {
+    return (
+        <div className="data-table-toggle-header" onClick={onToggle}>
+            <span className="data-table-title">Raw Data</span>
+            <span className={`data-table-toggle ${isOpen ? 'open' : ''}`}>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                    <path d="M2 4l4 4 4-4z"/>
+                </svg>
+            </span>
+        </div>
+    );
+}
 
-    if (data.length === 0) return null;
+// Data Table Component
+function DataTable({ data, isOpen }) {
+    if (data.length === 0 || !isOpen) return null;
 
     // Show all data when expanded (reversed so newest first)
     const displayData = [...data].reverse();
 
     return (
-        <div className={`data-table-container ${isOpen ? 'expanded' : ''}`}>
-            <div className="data-table-header" onClick={() => setIsOpen(!isOpen)}>
-                <span className="data-table-title">Raw Data</span>
-                <span className={`data-table-toggle ${isOpen ? 'open' : ''}`}>
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                        <path d="M2 4l4 4 4-4z"/>
-                    </svg>
-                </span>
-            </div>
-            {isOpen && (
-                <div className="data-table-body">
-                    <table className="data-table">
-                        <thead>
-                            <tr>
-                                <th>Time</th>
-                                <th>Premium ($)</th>
-                                <th>Stock ($)</th>
-                                <th>Spread (%)</th>
+        <div className="data-table-container expanded">
+            <div className="data-table-body">
+                <table className="data-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Premium ($)</th>
+                            <th>Stock ($)</th>
+                            <th>Spread (%)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {displayData.map((d, i) => (
+                            <tr key={i}>
+                                <td>{new Date(d.timestamp).toLocaleTimeString()}</td>
+                                <td>{d.premium.toFixed(2)}</td>
+                                <td>{d.stock_price.toFixed(2)}</td>
+                                <td>{d.spread_pct.toFixed(2)}</td>
                             </tr>
-                        </thead>
-                        <tbody>
-                            {displayData.map((d, i) => (
-                                <tr key={i}>
-                                    <td>{new Date(d.timestamp).toLocaleTimeString()}</td>
-                                    <td>{d.premium.toFixed(2)}</td>
-                                    <td>{d.stock_price.toFixed(2)}</td>
-                                    <td>{d.spread_pct.toFixed(2)}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }
@@ -782,8 +846,101 @@ function EmptyState() {
     );
 }
 
+// Helper to get today's date string
+function getTodayStr() {
+    return new Date().toISOString().split('T')[0];
+}
+
+// Day Navigator Component
+function DayNavigator({ selectedDate, availableDates, onDateChange, isTracking, config }) {
+    if (!config) return null;
+
+    const todayStr = getTodayStr();
+    const isToday = selectedDate === todayStr;
+
+    // Sort dates for navigation (oldest to newest)
+    const sortedDates = [...availableDates].sort();
+
+    const currentIndex = sortedDates.indexOf(selectedDate);
+    const hasPrev = currentIndex > 0;
+    const hasNext = currentIndex < sortedDates.length - 1 || !isToday;
+
+    const handlePrev = () => {
+        if (hasPrev && !isTracking) {
+            onDateChange(sortedDates[currentIndex - 1]);
+        }
+    };
+
+    const handleNext = () => {
+        if (!isTracking) {
+            if (currentIndex < sortedDates.length - 1) {
+                onDateChange(sortedDates[currentIndex + 1]);
+            } else if (!isToday) {
+                // Go to today even if no data exists yet
+                onDateChange(todayStr);
+            }
+        }
+    };
+
+    const handleToday = () => {
+        if (!isTracking && !isToday) {
+            onDateChange(todayStr);
+        }
+    };
+
+    // Format date for display
+    const formatDate = (dateStr) => {
+        const d = new Date(dateStr + 'T00:00:00');
+        return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    };
+
+    return (
+        <div className="day-navigator">
+            <button
+                className="day-nav-btn"
+                onClick={handlePrev}
+                disabled={!hasPrev || isTracking}
+                title="Previous day"
+            >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                    <path d="M8 2l-4 4 4 4z"/>
+                </svg>
+            </button>
+            <div className="day-nav-date">
+                <span className="day-nav-date-text">{formatDate(selectedDate)}</span>
+                {isToday && <span className="day-nav-today-badge">Today</span>}
+            </div>
+            <button
+                className="day-nav-btn"
+                onClick={handleNext}
+                disabled={(!hasNext && isToday) || isTracking}
+                title="Next day"
+            >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                    <path d="M4 2l4 4-4 4z"/>
+                </svg>
+            </button>
+            {!isToday && (
+                <button
+                    className="day-nav-today-btn"
+                    onClick={handleToday}
+                    disabled={isTracking}
+                    title="Jump to today"
+                >
+                    Today
+                </button>
+            )}
+            {isTracking && (
+                <span className="day-nav-live-badge">LIVE</span>
+            )}
+        </div>
+    );
+}
+
 // Main Content Component
-function MainContent({ data, config, isTracking }) {
+function MainContent({ data, config, isTracking, selectedDate, availableDates, onDateChange }) {
+    const [isDataTableOpen, setIsDataTableOpen] = useState(false);
+
     if (!config) {
         return (
             <main className="main">
@@ -792,22 +949,72 @@ function MainContent({ data, config, isTracking }) {
         );
     }
 
+    const todayStr = getTodayStr();
+    const isViewingToday = selectedDate === todayStr;
+
     return (
         <main className="main">
             <ContractInfo config={config} />
-            {data.length === 0 && isTracking ? (
-                <div className="empty-state">
-                    <div className="spinner"></div>
-                    <div className="empty-state-text" style={{ marginTop: '1rem' }}>
-                        Waiting for data... First fetch will happen shortly.
+            {data.length === 0 && isTracking && isViewingToday ? (
+                <>
+                    <div className="empty-state">
+                        <div className="spinner"></div>
+                        <div className="empty-state-text" style={{ marginTop: '1rem' }}>
+                            Waiting for data... First fetch will happen shortly.
+                        </div>
                     </div>
-                </div>
+                    <div className="chart-footer-row">
+                        <DayNavigator
+                            selectedDate={selectedDate}
+                            availableDates={availableDates}
+                            onDateChange={onDateChange}
+                            isTracking={isTracking}
+                            config={config}
+                        />
+                    </div>
+                </>
+            ) : data.length === 0 ? (
+                <>
+                    <div className="empty-state">
+                        <div className="empty-state-icon">📅</div>
+                        <div className="empty-state-text">
+                            No data for this date.
+                        </div>
+                    </div>
+                    <div className="chart-footer-row">
+                        <DayNavigator
+                            selectedDate={selectedDate}
+                            availableDates={availableDates}
+                            onDateChange={onDateChange}
+                            isTracking={isTracking}
+                            config={config}
+                        />
+                    </div>
+                </>
             ) : (
                 <>
                     <MetricsGrid data={data} />
                     <div className="chart-data-wrapper">
-                        <Chart data={data} />
-                        <DataTable data={data} />
+                        {/* Chart is hidden when data table is expanded */}
+                        {!isDataTableOpen && <Chart data={data} />}
+                        {/* Footer row with Day Navigator and Raw Data toggle side by side */}
+                        <div className="chart-footer-row">
+                            {!isDataTableOpen && (
+                                <DayNavigator
+                                    selectedDate={selectedDate}
+                                    availableDates={availableDates}
+                                    onDateChange={onDateChange}
+                                    isTracking={isTracking}
+                                    config={config}
+                                />
+                            )}
+                            <DataTableToggleHeader
+                                isOpen={isDataTableOpen}
+                                onToggle={() => setIsDataTableOpen(!isDataTableOpen)}
+                            />
+                        </div>
+                        {/* Data table body expands to fill space when open */}
+                        <DataTable data={data} isOpen={isDataTableOpen} />
                     </div>
                 </>
             )}
@@ -823,8 +1030,16 @@ function App() {
     const [data, setData] = useState([]);
     const [sidebarVisible, setSidebarVisible] = useState(true);
     const [marketStatus, setMarketStatus] = useState(null);
+    const [selectedDate, setSelectedDate] = useState(getTodayStr);
+    const [availableDates, setAvailableDates] = useState([]);
     const wsRef = useRef(null);
     const configRef = useRef(null); // Track current config for saving snapshots
+    const selectedDateRef = useRef(selectedDate); // For closure in onmessage
+
+    // Keep selectedDateRef in sync
+    useEffect(() => {
+        selectedDateRef.current = selectedDate;
+    }, [selectedDate]);
 
     // Fetch market status on mount and every 5 minutes
     useEffect(() => {
@@ -870,10 +1085,11 @@ function App() {
     }, []);
 
     // Load saved data from server
-    const loadSavedData = useCallback(async (trackingConfig) => {
+    const loadSavedData = useCallback(async (trackingConfig, dateStr = null) => {
         try {
+            const dateParam = dateStr ? `?date=${dateStr}` : '';
             const res = await fetch(
-                `${API_BASE}/api/data/load/${trackingConfig.ticker}/${trackingConfig.strike}/${trackingConfig.put_call}`
+                `${API_BASE}/api/data/load/${trackingConfig.ticker}/${trackingConfig.strike}/${trackingConfig.put_call}${dateParam}`
             );
             const data = await res.json();
             return data.snapshots || [];
@@ -882,6 +1098,51 @@ function App() {
             return [];
         }
     }, []);
+
+    // Fetch available dates for a contract
+    const fetchAvailableDates = useCallback(async (trackingConfig) => {
+        try {
+            const res = await fetch(
+                `${API_BASE}/api/data/dates/${trackingConfig.ticker}/${trackingConfig.strike}/${trackingConfig.put_call}`
+            );
+            const data = await res.json();
+            return data.dates || [];
+        } catch (e) {
+            console.error('Failed to fetch available dates:', e);
+            return [];
+        }
+    }, []);
+
+    // Handle date change from day navigator
+    const handleDateChange = useCallback(async (newDate) => {
+        if (!config) return;
+        setSelectedDate(newDate);
+        const savedData = await loadSavedData(config, newDate);
+        setData(savedData);
+    }, [config, loadSavedData]);
+
+    // Handle loading historical date from sidebar
+    const handleLoadHistoricalDate = useCallback(async (trackingConfig, dateStr) => {
+        setConfig(trackingConfig);
+        configRef.current = trackingConfig;
+        setSelectedDate(dateStr);
+        selectedDateRef.current = dateStr;
+
+        // Fetch available dates for this contract
+        const dates = await fetchAvailableDates(trackingConfig);
+        const todayStr = getTodayStr();
+        if (!dates.includes(todayStr)) {
+            dates.unshift(todayStr);
+        }
+        setAvailableDates(dates);
+
+        // Load saved data for the selected date
+        const savedData = await loadSavedData(trackingConfig, dateStr);
+        setData(savedData);
+
+        // Hide sidebar after loading
+        setSidebarVisible(false);
+    }, [fetchAvailableDates, loadSavedData]);
 
     const connect = useCallback(() => {
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
@@ -901,10 +1162,14 @@ function App() {
                 // Save snapshot to file
                 saveSnapshot(msg, configRef.current);
 
-                setData(prev => {
-                    const newData = [...prev, msg];
-                    return newData;
-                });
+                // Only append to UI if viewing today (use ref to avoid stale closure)
+                const todayStr = getTodayStr();
+                if (selectedDateRef.current === todayStr) {
+                    setData(prev => {
+                        const newData = [...prev, msg];
+                        return newData;
+                    });
+                }
             } else if (msg.type === 'tracking_started') {
                 setIsTracking(true);
             } else if (msg.type === 'tracking_stopped') {
@@ -947,12 +1212,25 @@ function App() {
             setConfig(trackingConfig);
             configRef.current = trackingConfig;
 
-            // Load saved data for this contract BEFORE starting tracking
-            console.log('Loading saved data for:', trackingConfig);
-            const savedData = await loadSavedData(trackingConfig);
+            // Reset to today when starting tracking
+            const todayStr = getTodayStr();
+            setSelectedDate(todayStr);
+            selectedDateRef.current = todayStr;
+
+            // Fetch available dates for this contract
+            const dates = await fetchAvailableDates(trackingConfig);
+            // Ensure today is in the list (even if no data yet)
+            if (!dates.includes(todayStr)) {
+                dates.unshift(todayStr);
+            }
+            setAvailableDates(dates);
+
+            // Load saved data for today BEFORE starting tracking
+            console.log('Loading saved data for:', trackingConfig, 'date:', todayStr);
+            const savedData = await loadSavedData(trackingConfig, todayStr);
             console.log('Loaded', savedData.length, 'snapshots from file');
-            
-            // Load all saved data for the day
+
+            // Load all saved data for today
             setData(savedData);
 
             // Now start real-time tracking which will append to this data
@@ -987,8 +1265,16 @@ function App() {
                     isLoading={false}
                     config={config}
                     visible={sidebarVisible}
+                    onLoadHistoricalDate={handleLoadHistoricalDate}
                 />
-                <MainContent data={data} config={config} isTracking={isTracking} />
+                <MainContent
+                    data={data}
+                    config={config}
+                    isTracking={isTracking}
+                    selectedDate={selectedDate}
+                    availableDates={availableDates}
+                    onDateChange={handleDateChange}
+                />
             </div>
         </ThemeProvider>
     );

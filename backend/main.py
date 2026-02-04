@@ -5,11 +5,12 @@ Provides REST endpoints for contract discovery and WebSocket for real-time strea
 
 import asyncio
 import json
-from datetime import datetime
+import re
+from datetime import datetime, date
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -133,66 +134,150 @@ async def get_market_status():
 
 
 # Data Persistence Endpoints
-def get_data_file(ticker: str, strike: float, put_call: str) -> Path:
-    """Get the data file path for a contract."""
+def get_data_file(ticker: str, strike: float, put_call: str, for_date: date = None) -> Path:
+    """Get the data file path for a contract on a specific date."""
+    if for_date is None:
+        for_date = date.today()
     # Format strike as int if it's a whole number, otherwise use float
     strike_str = str(int(strike)) if strike == int(strike) else str(strike)
-    filename = f"{ticker.upper()}_{strike_str}_{put_call}.json"
+    filename = f"{ticker.upper()}_{strike_str}_{put_call}_{for_date.isoformat()}.json"
     return DATA_DIR / filename
+
+
+def get_contract_pattern(ticker: str, strike: float, put_call: str) -> str:
+    """Get regex pattern to match all date files for a contract."""
+    strike_str = str(int(strike)) if strike == int(strike) else str(strike)
+    return f"^{ticker.upper()}_{strike_str}_{put_call}_\\d{{4}}-\\d{{2}}-\\d{{2}}\\.json$"
 
 
 @app.post("/api/data/save")
 async def save_snapshot(snapshot: dict):
-    """Save a snapshot to the data file."""
+    """Save a snapshot to the date-specific data file."""
     ticker = snapshot.get("ticker", "").upper()
     strike = snapshot.get("strike", 0)
     put_call = snapshot.get("put_call", "call")
 
-    data_file = get_data_file(ticker, strike, put_call)
+    # Extract date from snapshot timestamp
+    timestamp_str = snapshot.get("timestamp", "")
+    try:
+        snapshot_date = datetime.fromisoformat(timestamp_str).date()
+    except (ValueError, TypeError):
+        snapshot_date = date.today()
+
+    data_file = get_data_file(ticker, strike, put_call, snapshot_date)
 
     # Load existing data or start fresh
     if data_file.exists():
         with open(data_file, "r") as f:
             data = json.load(f)
     else:
-        data = {"ticker": ticker, "strike": strike, "put_call": put_call, "snapshots": []}
+        data = {
+            "ticker": ticker,
+            "strike": strike,
+            "put_call": put_call,
+            "date": snapshot_date.isoformat(),
+            "snapshots": []
+        }
 
     # Add new snapshot (exclude meta fields)
     snapshot_data = {k: v for k, v in snapshot.items() if k not in ("ticker", "strike", "put_call")}
     data["snapshots"].append(snapshot_data)
 
-    # Keep last 500 snapshots
-    data["snapshots"] = data["snapshots"][-500:]
+    # No limit - store all snapshots for the day
 
     # Save
     with open(data_file, "w") as f:
         json.dump(data, f, indent=2)
 
-    return {"status": "saved", "count": len(data["snapshots"])}
+    return {"status": "saved", "count": len(data["snapshots"]), "date": snapshot_date.isoformat()}
 
 
 @app.get("/api/data/load/{ticker}/{strike}/{put_call}")
-async def load_data(ticker: str, strike: float, put_call: str):
-    """Load saved data for a contract."""
-    data_file = get_data_file(ticker, strike, put_call)
+async def load_data(ticker: str, strike: float, put_call: str, date_str: Optional[str] = Query(None, alias="date")):
+    """Load saved data for a contract on a specific date."""
+    # Parse date or default to today
+    if date_str:
+        try:
+            for_date = date.fromisoformat(date_str)
+        except ValueError:
+            for_date = date.today()
+    else:
+        for_date = date.today()
+
+    data_file = get_data_file(ticker, strike, put_call, for_date)
 
     if not data_file.exists():
-        return {"ticker": ticker.upper(), "strike": strike, "put_call": put_call, "snapshots": []}
+        return {
+            "ticker": ticker.upper(),
+            "strike": strike,
+            "put_call": put_call,
+            "date": for_date.isoformat(),
+            "snapshots": []
+        }
 
     with open(data_file, "r") as f:
-        return json.load(f)
+        data = json.load(f)
+        # Ensure date field is present
+        data["date"] = for_date.isoformat()
+        return data
+
+
+@app.get("/api/data/dates/{ticker}/{strike}/{put_call}")
+async def get_available_dates(ticker: str, strike: float, put_call: str):
+    """Get list of available dates for a contract (newest first)."""
+    pattern = get_contract_pattern(ticker, strike, put_call)
+    regex = re.compile(pattern)
+
+    dates = []
+    for file in DATA_DIR.iterdir():
+        if file.is_file() and regex.match(file.name):
+            # Extract date from filename: TICKER_STRIKE_PUTCALL_YYYY-MM-DD.json
+            date_str = file.stem.split("_")[-1]
+            try:
+                dates.append(date_str)
+            except ValueError:
+                continue
+
+    # Sort dates newest first
+    dates.sort(reverse=True)
+
+    return {
+        "ticker": ticker.upper(),
+        "strike": strike,
+        "put_call": put_call,
+        "dates": dates
+    }
 
 
 @app.delete("/api/data/clear/{ticker}/{strike}/{put_call}")
-async def clear_data(ticker: str, strike: float, put_call: str):
-    """Clear saved data for a contract."""
-    data_file = get_data_file(ticker, strike, put_call)
+async def clear_data(ticker: str, strike: float, put_call: str, date_str: Optional[str] = Query(None, alias="date")):
+    """Clear saved data for a contract. If date provided, clear only that day; otherwise clear all days."""
+    if date_str:
+        # Clear specific date
+        try:
+            for_date = date.fromisoformat(date_str)
+        except ValueError:
+            return {"status": "invalid_date"}
 
-    if data_file.exists():
-        data_file.unlink()
-        return {"status": "cleared"}
+        data_file = get_data_file(ticker, strike, put_call, for_date)
+        if data_file.exists():
+            data_file.unlink()
+            return {"status": "cleared", "date": for_date.isoformat()}
+        return {"status": "not_found", "date": for_date.isoformat()}
+    else:
+        # Clear all dates for this contract
+        pattern = get_contract_pattern(ticker, strike, put_call)
+        regex = re.compile(pattern)
 
-    return {"status": "not_found"}
+        deleted_count = 0
+        for file in list(DATA_DIR.iterdir()):
+            if file.is_file() and regex.match(file.name):
+                file.unlink()
+                deleted_count += 1
+
+        if deleted_count > 0:
+            return {"status": "cleared", "deleted_files": deleted_count}
+        return {"status": "not_found"}
 
 
 # WebSocket for real-time streaming

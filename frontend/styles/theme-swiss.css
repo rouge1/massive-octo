@@ -100,13 +100,26 @@
 }
 
 [data-theme="swiss"] .btn-primary {
+    background: var(--bg-primary);
+    color: var(--accent-primary);
+    border-color: var(--accent-primary);
+}
+
+[data-theme="swiss"] .btn-primary:hover {
     background: var(--accent-primary);
     color: var(--bg-primary);
     border-color: var(--accent-primary);
 }
 
-[data-theme="swiss"] .btn-primary:hover {
+[data-theme="swiss"] .btn-danger {
+    background: var(--accent-danger);
+    color: var(--bg-primary);
+    border-color: var(--accent-danger);
+}
+
+[data-theme="swiss"] .btn-danger:hover {
     background: var(--text-primary);
+    color: var(--bg-primary);
     border-color: var(--text-primary);
 }
 

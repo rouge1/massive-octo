@@ -527,7 +527,6 @@ body {
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     padding: var(--space-sm) var(--space-md);
-    margin-bottom: var(--space-md);
     flex: 1;
     min-height: 250px;
     display: flex;
@@ -561,12 +560,7 @@ body {
 
 /* Data Table Expanded Overlay */
 .data-table-container.expanded {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 10;
+    flex: 1;
     display: flex;
     flex-direction: column;
 }
@@ -903,6 +897,130 @@ body {
     }
 }
 
+/* Chart Footer Row - Day Navigator + Raw Data Toggle side by side */
+.chart-footer-row {
+    display: flex;
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
+}
+
+.chart-footer-row .day-navigator {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+.data-table-toggle-header {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-sm) var(--space-md);
+    min-height: 44px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    cursor: pointer;
+}
+
+/* Day Navigator */
+.day-navigator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    margin-bottom: var(--space-md);
+    min-height: 44px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+}
+
+.day-nav-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    padding: var(--space-xs) 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    color: var(--text-primary);
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.day-nav-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    border-color: var(--accent-primary);
+}
+
+.day-nav-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.day-nav-date {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    min-width: 160px;
+    justify-content: center;
+}
+
+.day-nav-date-text {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--text-primary);
+}
+
+.day-nav-today-badge {
+    padding: 2px 6px;
+    background: var(--accent-primary);
+    color: var(--bg-primary);
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 3px;
+}
+
+.day-nav-today-btn {
+    padding: var(--space-xs) var(--space-sm);
+    background: transparent;
+    border: 1px solid var(--accent-primary);
+    border-radius: var(--border-radius);
+    color: var(--accent-primary);
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.day-nav-today-btn:hover:not(:disabled) {
+    background: var(--accent-primary);
+    color: var(--bg-primary);
+}
+
+.day-nav-today-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.day-nav-live-badge {
+    padding: 2px 8px;
+    background: #00dd00;
+    color: #000;
+    font-size: 0.625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-radius: 3px;
+    animation: pulse 2s infinite;
+}
+
 @media (max-width: 480px) {
     .metric {
         min-width: 100%;
@@ -936,4 +1054,31 @@ body {
     .metrics-greek {
         grid-column: span 1;
     }
+}
+
+/* Historical Dates List (Sidebar) */
+.historical-dates-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.historical-date-btn {
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    cursor: pointer;
+    text-align: left;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.historical-date-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-primary);
 }
