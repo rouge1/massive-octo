@@ -1174,6 +1174,13 @@ function App() {
                 setIsTracking(true);
             } else if (msg.type === 'tracking_stopped') {
                 setIsTracking(false);
+                // If stopped due to market closing, update market status
+                if (msg.market_status) {
+                    setMarketStatus(msg.market_status);
+                }
+                if (msg.message) {
+                    console.log('Tracking stopped:', msg.message);
+                }
             } else if (msg.type === 'market_closed') {
                 // Update market status when we get this message
                 setMarketStatus(msg.market_status);
@@ -1206,6 +1213,29 @@ function App() {
             }
         };
     }, [connect]);
+
+    // Handle clicking outside sidebar to close it
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (sidebarVisible) {
+                const sidebar = document.querySelector('.sidebar');
+                const headerToggle = document.querySelector('.config-toggle-btn');
+                
+                // Close sidebar if click is outside sidebar and not on the header toggle button
+                if (sidebar && !sidebar.contains(event.target) && !headerToggle.contains(event.target)) {
+                    setSidebarVisible(false);
+                }
+            }
+        };
+
+        if (sidebarVisible) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [sidebarVisible]);
 
     const handleStartTracking = async (trackingConfig) => {
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {

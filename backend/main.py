@@ -318,15 +318,14 @@ class ConnectionManager:
                         market_status = is_market_open()
                         
                         if not market_status["is_open"]:
-                            # Send market closed status
+                            # Market is closed - automatically stop tracking
                             await websocket.send_json({
-                                "type": "market_closed",
+                                "type": "tracking_stopped",
+                                "reason": "market_closed",
                                 "market_status": market_status,
-                                "message": f"Market is {market_status['status']}. Data collection paused."
+                                "message": f"Market is {market_status['status']}. Tracking automatically stopped."
                             })
-                            # Wait longer when market is closed (5 minutes)
-                            await asyncio.sleep(300)
-                            continue
+                            break  # Exit the streaming loop to stop tracking
                         
                         timestamp, premium, stock_price, spread_pct, option_data = fetch_snapshot(
                             ticker, contract, expiration, strike, put_call
