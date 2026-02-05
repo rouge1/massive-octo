@@ -9,6 +9,51 @@ FRONTEND_PID_FILE="$CONFIG_DIR/frontend.pid"
 BACKEND_LOG="$CONFIG_DIR/backend.log"
 FRONTEND_LOG="$CONFIG_DIR/frontend.log"
 
+REQUIRED_ENV="mass"
+
+# Check and activate conda environment
+ensure_conda_env() {
+    # Check if conda is available
+    if ! command -v conda &> /dev/null; then
+        echo "WARNING: conda command not found. Make sure conda is installed and in PATH."
+        return 1
+    fi
+
+    # Get current conda environment
+    CURRENT_ENV="${CONDA_DEFAULT_ENV:-}"
+
+    if [ "$CURRENT_ENV" = "$REQUIRED_ENV" ]; then
+        echo "✓ Conda environment '$REQUIRED_ENV' is active"
+        return 0
+    fi
+
+    if [ -n "$CURRENT_ENV" ]; then
+        echo "WARNING: Wrong conda environment active: '$CURRENT_ENV' (expected '$REQUIRED_ENV')"
+    else
+        echo "WARNING: No conda environment is active (expected '$REQUIRED_ENV')"
+    fi
+
+    echo "Activating conda environment '$REQUIRED_ENV'..."
+
+    # Source conda.sh to enable conda activate in scripts
+    CONDA_BASE=$(conda info --base 2>/dev/null)
+    if [ -z "$CONDA_BASE" ]; then
+        echo "ERROR: Could not determine conda base directory"
+        return 1
+    fi
+
+    source "$CONDA_BASE/etc/profile.d/conda.sh"
+
+    if conda activate "$REQUIRED_ENV" 2>/dev/null; then
+        echo "✓ Activated conda environment '$REQUIRED_ENV'"
+        return 0
+    else
+        echo "ERROR: Failed to activate conda environment '$REQUIRED_ENV'"
+        echo "       Try running: conda activate $REQUIRED_ENV"
+        return 1
+    fi
+}
+
 start_backend() {
     if [ -f "$BACKEND_PID_FILE" ] && kill -0 $(cat "$BACKEND_PID_FILE") 2>/dev/null; then
         echo "Backend already running (PID: $(cat $BACKEND_PID_FILE))"
@@ -84,6 +129,12 @@ status() {
 
 case "$1" in
     start)
+        if ! ensure_conda_env; then
+            echo ""
+            echo "Failed to ensure conda environment. Aborting."
+            exit 1
+        fi
+        echo ""
         start_backend
         start_frontend
         echo ""
