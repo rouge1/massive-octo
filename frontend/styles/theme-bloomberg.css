@@ -116,3 +116,33 @@
     padding: var(--space-xs) var(--space-sm);
     font-size: 0.75rem;
 }
+
+/* Watchlist table - Terminal precision */
+[data-theme="bloomberg"] .watchlist-table-container {
+    border-radius: 0;
+    border: 2px solid var(--accent-primary);
+}
+
+[data-theme="bloomberg"] .watchlist-table thead {
+    background: var(--bg-primary);
+    border-bottom: 2px solid var(--accent-primary);
+}
+
+[data-theme="bloomberg"] .watchlist-table th.sortable:hover {
+    color: var(--accent-primary);
+}
+
+[data-theme="bloomberg"] .sort-icon.asc,
+[data-theme="bloomberg"] .sort-icon.desc {
+    color: var(--accent-primary);
+    text-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+}
+
+[data-theme="bloomberg"] .watchlist-table tbody tr:hover {
+    background: var(--bg-hover);
+    border-left: 2px solid var(--accent-primary);
+}
+
+[data-theme="bloomberg"] .cell-ticker {
+    text-shadow: 0 0 8px rgba(0, 255, 0, 0.3);
+}

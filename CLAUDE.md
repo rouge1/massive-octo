@@ -30,6 +30,7 @@ conda activate mass
 │   ├── backend.log          # Backend output log
 │   └── frontend.log         # Frontend output log
 ├── data/                    # Persisted snapshot data (gitignored)
+│   ├── watchlist.json       # Watchlist items (persisted)
 │   └── {TICKER}_{STRIKE}_{PUTCALL}_{YYYY-MM-DD}.json  # Per-contract per-day history
 ├── migrate_data.py          # One-time migration script for legacy data
 ├── mass.sh                  # Start/stop/status script
@@ -93,6 +94,10 @@ conda install -c conda-forge fastapi uvicorn websockets yfinance pytz
 - `GET /api/data/load/{ticker}/{strike}/{put_call}?date=YYYY-MM-DD` - Load saved snapshots (defaults to today)
 - `GET /api/data/dates/{ticker}/{strike}/{put_call}` - Get list of available dates (newest first)
 - `DELETE /api/data/clear/{ticker}/{strike}/{put_call}?date=YYYY-MM-DD` - Clear saved data (specific date or all)
+- `GET /api/watchlist` - Get all watchlist items
+- `POST /api/watchlist` - Add an item to the watchlist
+- `DELETE /api/watchlist/{item_id}` - Remove an item from the watchlist
+- `GET /api/watchlist/{item_id}/snapshot` - Get current snapshot for a watchlist item
 - `GET /docs` - OpenAPI documentation
 
 ### WebSocket Endpoint
@@ -141,6 +146,33 @@ Four switchable themes accessible via the header:
 
 Theme preference is persisted in localStorage.
 
+## Watchlist Feature
+
+The watchlist is the default landing page and allows you to monitor multiple option contracts simultaneously.
+
+### Watchlist View
+- **Option Cards**: Each card displays:
+  - Underlying ticker
+  - Strike price
+  - Option type (PUT/CALL)
+  - Expiration date
+  - Days to Expiration (DTE) - auto-calculated
+  - Live premium data: Last, Bid, Ask
+- **Auto-refresh**: Each card fetches live data every 60 seconds
+- **Quick Actions**:
+  - Click the card to view detailed tracking/chart
+  - Click "×" to remove from watchlist
+  - Click "+ Add New Option" to configure and add options
+
+### Watchlist Storage
+- Stored in `/data/watchlist.json`
+- Persists across server restarts
+- Each item has unique ID, ticker, strike, type, expiration, contract, and timestamp
+
+### Navigation
+- **Watchlist/Tracker tabs** in header to switch views
+- **Add to Watchlist button** appears in tracker view when tracking an option
+
 ## Testing Parameters
 - Ticker: AAPL
 - Strike: 200
@@ -161,13 +193,15 @@ Theme preference is persisted in localStorage.
 - Google Fonts (IBM Plex Mono, DM Sans, Space Grotesk, VT323, Share Tech Mono)
 
 ## Key Features
-- Real-time WebSocket streaming (30s intervals when market open, 5min when closed)
+- **Watchlist view** - Landing page with option cards showing live data for multiple contracts
+- Real-time WebSocket streaming (30s intervals when market open)
 - Market status detection (open/pre-market/after-hours/weekend)
 - Dual y-axis chart: premium + stock price
 - Option greeks display (bid, ask, IV, volume, OI)
-- Theme persistence via localStorage
+- Theme persistence via localStorage (4 themes)
 - Form state persistence (ticker, strike, contract survive refresh)
 - Data persistence (snapshots saved to JSON files, survives restart)
+- Watchlist persistence (stored in JSON file)
 - Toggleable sidebar (fixed overlay, auto-hides when tracking starts)
 - Raw Data table expands as overlay with scrollable content
 - Metrics grid layout (5-col design with bid/ask and last price history)
@@ -175,6 +209,8 @@ Theme preference is persisted in localStorage.
 - Responsive layout
 - Unlimited snapshots per day in persistent storage (date-partitioned files)
 - Day navigator to browse historical data
+- Option cards with DTE calculation
+- Click-to-track from watchlist cards
 
 ## Implementation Status
 - [x] FastAPI backend with REST endpoints
@@ -188,7 +224,10 @@ Theme preference is persisted in localStorage.
 - [x] Raw Data table as expandable overlay with scroll
 - [x] Market status detection (open/closed/pre-market/after-hours)
 - [x] Historical data persistence (JSON files)
-- [ ] Multi-contract watchlist
+- [x] Watchlist view with option cards
+- [x] Watchlist CRUD endpoints
+- [x] Add to watchlist from tracker view
+- [x] View navigation (watchlist/tracker)
 - [ ] Browser notifications for spread alerts
 - [ ] CSV export
 

@@ -69,7 +69,7 @@ const chartColors = {
 };
 
 // Header Component
-function Header({ connectionStatus, isTracking, sidebarVisible, onToggleSidebar, marketStatus }) {
+function Header({ connectionStatus, isTracking, sidebarVisible, onToggleSidebar, marketStatus, view, onSwitchView, onAddToWatchlist, onAddNewOption }) {
     const { theme, setTheme } = useTheme();
     const themes = ['bloomberg', 'fintech', 'retro', 'swiss'];
 
@@ -105,13 +105,15 @@ function Header({ connectionStatus, isTracking, sidebarVisible, onToggleSidebar,
     return (
         <header className="header">
             <div className="header-left">
-                <button
-                    className="config-toggle-btn"
-                    onClick={onToggleSidebar}
-                    title={sidebarVisible ? 'Hide Config' : 'Show Config'}
-                >
-                    {sidebarVisible ? '\u2715' : '\u2630'}
-                </button>
+                {view === 'tracker' && (
+                    <button
+                        className="config-toggle-btn"
+                        onClick={onToggleSidebar}
+                        title={sidebarVisible ? 'Hide Config' : 'Show Config'}
+                    >
+                        {sidebarVisible ? '\u2715' : '\u2630'}
+                    </button>
+                )}
                 <div className="logo">
                     <svg className="logo-icon" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M3 13h1v7c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-7h1a1 1 0 0 0 .4-1.92l-9-4a1 1 0 0 0-.8 0l-9 4A1 1 0 0 0 3 13zm7 6v-4h4v4h-4zm6-4h2v4h-2v-4zM6 15h2v4H6v-4z"/>
@@ -119,18 +121,47 @@ function Header({ connectionStatus, isTracking, sidebarVisible, onToggleSidebar,
                     </svg>
                     Options Premium Tracker
                 </div>
+                <div className="view-nav">
+                    <button
+                        className={`view-nav-btn ${view === 'watchlist' ? 'active' : ''}`}
+                        onClick={() => view !== 'watchlist' && onSwitchView()}
+                    >
+                        📋 Watchlist
+                    </button>
+                    <button
+                        className={`view-nav-btn ${view === 'tracker' ? 'active' : ''}`}
+                        onClick={() => view !== 'tracker' && onSwitchView()}
+                    >
+                        📈 Tracker
+                    </button>
+                    {onAddNewOption && (
+                        <button
+                            className="view-nav-btn add-option-btn"
+                            onClick={onAddNewOption}
+                        >
+                            + Add Option
+                        </button>
+                    )}
+                </div>
             </div>
             <div className="header-controls">
+                {onAddToWatchlist && (
+                    <button className="btn-add-watchlist" onClick={onAddToWatchlist}>
+                        + Add to Watchlist
+                    </button>
+                )}
                 {marketStatus && (
                     <div className="connection-status">
                         <span className={`status-dot ${getMarketStatusClass()}`}></span>
                         {getMarketStatusText()}
                     </div>
                 )}
-                <div className="connection-status">
-                    <span className={`status-dot ${getStatusClass()}`}></span>
-                    {getStatusText()}
-                </div>
+                {view === 'tracker' && (
+                    <div className="connection-status">
+                        <span className={`status-dot ${getStatusClass()}`}></span>
+                        {getStatusText()}
+                    </div>
+                )}
                 <div className="theme-switcher">
                     {themes.map(t => {
                         const names = {
@@ -1022,8 +1053,292 @@ function MainContent({ data, config, isTracking, selectedDate, availableDates, o
     );
 }
 
+// Watchlist Row Component
+function WatchlistRow({ item, onRemove, onTrack }) {
+    const [snapshot, setSnapshot] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    // Fetch snapshot data for this option
+    useEffect(() => {
+        const fetchSnapshot = async () => {
+            try {
+                setLoading(true);
+                const res = await fetch(`${API_BASE}/api/watchlist/${item.id}/snapshot`);
+                const data = await res.json();
+                if (data.error) {
+                    setError(data.error);
+                } else {
+                    setSnapshot(data);
+                }
+            } catch (e) {
+                setError(e.message);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchSnapshot();
+        // Refresh every 60 seconds
+        const interval = setInterval(fetchSnapshot, 60000);
+        return () => clearInterval(interval);
+    }, [item.id]);
+
+    // Calculate DTE
+    const calculateDTE = (expiration) => {
+        const exp = new Date(expiration);
+        const today = new Date();
+        const diffTime = exp - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays;
+    };
+
+    const dte = calculateDTE(item.expiration);
+
+    const handleRowClick = () => {
+        onTrack(item);
+    };
+
+    const handleRemove = (e) => {
+        e.stopPropagation();
+        if (confirm(`Remove ${item.ticker} $${item.strike.toFixed(2)} ${item.put_call.toUpperCase()} from watchlist?`)) {
+            onRemove(item.id);
+        }
+    };
+
+    return (
+        <tr className="watchlist-row" onClick={handleRowClick}>
+            <td className="cell-ticker">{item.ticker}</td>
+            <td className="cell-strike">${item.strike.toFixed(2)}</td>
+            <td className="cell-type">
+                <span className={`type-badge type-${item.put_call}`}>
+                    {item.put_call.toUpperCase()}
+                </span>
+            </td>
+            <td className="cell-expiration">{item.expiration}</td>
+            <td className="cell-dte">{dte}</td>
+            <td className="cell-price">
+                {loading ? (
+                    <div className="spinner-small"></div>
+                ) : error ? (
+                    <span className="price-error">—</span>
+                ) : snapshot ? (
+                    snapshot.option_data.last !== null
+                        ? `$${snapshot.option_data.last.toFixed(2)}`
+                        : '—'
+                ) : '—'}
+            </td>
+            <td className="cell-price">
+                {loading ? '' : error ? '—' : snapshot ? `$${snapshot.option_data.bid.toFixed(2)}` : '—'}
+            </td>
+            <td className="cell-price">
+                {loading ? '' : error ? '—' : snapshot ? `$${snapshot.option_data.ask.toFixed(2)}` : '—'}
+            </td>
+            <td className="cell-remove">
+                <button
+                    className="remove-btn"
+                    onClick={handleRemove}
+                    title="Remove from watchlist"
+                >
+                    ✕
+                </button>
+            </td>
+        </tr>
+    );
+}
+
+// Watchlist Table Header Component
+function WatchlistTableHeader({ sortBy, sortDirection, onSort }) {
+    const columns = [
+        { key: 'ticker', label: 'Ticker', type: 'string' },
+        { key: 'strike', label: 'Strike', type: 'number' },
+        { key: 'type', label: 'Type', type: 'string' },
+        { key: 'expiration', label: 'Expiration', type: 'string' },
+        { key: 'dte', label: 'DTE', type: 'number' },
+        { key: null, label: 'Last', type: null }, // Not sortable
+        { key: null, label: 'Bid', type: null }, // Not sortable
+        { key: null, label: 'Ask', type: null }, // Not sortable
+        { key: null, label: '', type: null }, // Remove button column
+    ];
+
+    const handleSort = (key) => {
+        if (!key) return; // Skip non-sortable columns
+        if (sortBy === key) {
+            onSort(key, sortDirection === 'asc' ? 'desc' : 'asc');
+        } else {
+            onSort(key, 'asc');
+        }
+    };
+
+    const getSortIcon = (key) => {
+        if (!key) return null;
+        if (sortBy !== key) return <span className="sort-icon"></span>;
+        return <span className={`sort-icon ${sortDirection}`}></span>;
+    };
+
+    return (
+        <thead>
+            <tr>
+                {columns.map((col, idx) => (
+                    <th
+                        key={idx}
+                        className={col.key ? 'sortable' : ''}
+                        data-sort={col.key || ''}
+                        data-type={col.type || ''}
+                        onClick={() => handleSort(col.key)}
+                    >
+                        <span className="th-content">
+                            {col.label}
+                            {getSortIcon(col.key)}
+                        </span>
+                    </th>
+                ))}
+            </tr>
+        </thead>
+    );
+}
+
+// Watchlist View Component
+function WatchlistView({ onSwitchToTracker }) {
+    const [items, setItems] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [sortBy, setSortBy] = useState('ticker'); // default sort
+    const [sortDirection, setSortDirection] = useState('asc');
+
+    // Load watchlist
+    useEffect(() => {
+        const loadWatchlist = async () => {
+            try {
+                const res = await fetch(`${API_BASE}/api/watchlist`);
+                const data = await res.json();
+                setItems(data.items || []);
+            } catch (e) {
+                console.error('Failed to load watchlist:', e);
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadWatchlist();
+    }, []);
+
+    // Helper to calculate DTE
+    const calculateDTE = (expiration) => {
+        const exp = new Date(expiration);
+        const today = new Date();
+        const diffTime = exp - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays;
+    };
+
+    // Sort items based on current sort settings
+    const sortedItems = [...items].sort((a, b) => {
+        let compareValue = 0;
+
+        switch (sortBy) {
+            case 'ticker':
+                compareValue = a.ticker.localeCompare(b.ticker);
+                break;
+            case 'dte':
+                const dtea = calculateDTE(a.expiration);
+                const dteb = calculateDTE(b.expiration);
+                compareValue = dtea - dteb;
+                break;
+            case 'strike':
+                compareValue = a.strike - b.strike;
+                break;
+            case 'type':
+                compareValue = a.put_call.localeCompare(b.put_call);
+                break;
+            default:
+                compareValue = 0;
+        }
+
+        return sortDirection === 'asc' ? compareValue : -compareValue;
+    });
+
+    const handleSort = (key, direction) => {
+        setSortBy(key);
+        setSortDirection(direction);
+    };
+
+    const handleRemove = async (itemId) => {
+        try {
+            await fetch(`${API_BASE}/api/watchlist/${itemId}`, {
+                method: 'DELETE',
+            });
+            setItems(items.filter(item => item.id !== itemId));
+        } catch (e) {
+            console.error('Failed to remove item:', e);
+            alert('Failed to remove option from watchlist. Please try again.');
+        }
+    };
+
+    const handleTrack = (item) => {
+        // Switch to tracker view with this item's config
+        onSwitchToTracker({
+            ticker: item.ticker,
+            strike: item.strike,
+            put_call: item.put_call,
+            expiration: item.expiration,
+            contract: item.contract,
+        });
+    };
+
+    if (loading) {
+        return (
+            <main className="main">
+                <div className="empty-state">
+                    <div className="spinner"></div>
+                    <div className="empty-state-text">Loading watchlist...</div>
+                </div>
+            </main>
+        );
+    }
+
+    if (items.length === 0) {
+        return (
+            <main className="main">
+                <div className="empty-state">
+                    <div className="empty-state-icon">📊</div>
+                    <div className="empty-state-text">
+                        Your watchlist is empty. Add options to track their premiums.
+                    </div>
+                    <button className="btn-primary" onClick={() => onSwitchToTracker(null)}>
+                        Add Your First Option
+                    </button>
+                </div>
+            </main>
+        );
+    }
+
+    return (
+        <main className="main">
+            <div className="watchlist-table-container">
+                <table className="watchlist-table">
+                    <WatchlistTableHeader
+                        sortBy={sortBy}
+                        sortDirection={sortDirection}
+                        onSort={handleSort}
+                    />
+                    <tbody>
+                        {sortedItems.map(item => (
+                            <WatchlistRow
+                                key={item.id}
+                                item={item}
+                                onRemove={handleRemove}
+                                onTrack={handleTrack}
+                            />
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    );
+}
+
 // Main App Component
 function App() {
+    const [view, setView] = useState('watchlist'); // 'watchlist' or 'tracker'
     const [connectionStatus, setConnectionStatus] = useState('disconnected');
     const [isTracking, setIsTracking] = useState(false);
     const [config, setConfig] = useState(null);
@@ -1278,6 +1593,47 @@ function App() {
         setIsTracking(false);
     };
 
+    const handleSwitchToTracker = (itemConfig) => {
+        setView('tracker');
+        setSidebarVisible(true);
+        
+        // If itemConfig is provided, pre-populate the form
+        if (itemConfig) {
+            // The Sidebar will need to handle this pre-population
+            // For now, just switch to tracker view
+        }
+    };
+
+    const handleSwitchToWatchlist = () => {
+        setView('watchlist');
+        setSidebarVisible(false);
+        if (isTracking) {
+            handleStopTracking();
+        }
+    };
+
+    const handleAddToWatchlist = async () => {
+        if (!config) return;
+        
+        try {
+            await fetch(`${API_BASE}/api/watchlist`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ticker: config.ticker,
+                    strike: config.strike,
+                    put_call: config.put_call,
+                    expiration: config.expiration,
+                    contract: config.contract,
+                })
+            });
+            alert('Added to watchlist!');
+        } catch (e) {
+            console.error('Failed to add to watchlist:', e);
+            alert('Failed to add to watchlist');
+        }
+    };
+
     return (
         <ThemeProvider>
             <div className="app">
@@ -1287,24 +1643,34 @@ function App() {
                     sidebarVisible={sidebarVisible}
                     onToggleSidebar={() => setSidebarVisible(!sidebarVisible)}
                     marketStatus={marketStatus}
+                    view={view}
+                    onSwitchView={view === 'watchlist' ? handleSwitchToTracker : handleSwitchToWatchlist}
+                    onAddToWatchlist={view === 'tracker' && config ? handleAddToWatchlist : null}
+                    onAddNewOption={view === 'watchlist' ? () => handleSwitchToTracker(null) : null}
                 />
-                <Sidebar
-                    onStartTracking={handleStartTracking}
-                    onStopTracking={handleStopTracking}
-                    isTracking={isTracking}
-                    isLoading={false}
-                    config={config}
-                    visible={sidebarVisible}
-                    onLoadHistoricalDate={handleLoadHistoricalDate}
-                />
-                <MainContent
-                    data={data}
-                    config={config}
-                    isTracking={isTracking}
-                    selectedDate={selectedDate}
-                    availableDates={availableDates}
-                    onDateChange={handleDateChange}
-                />
+                {view === 'watchlist' ? (
+                    <WatchlistView onSwitchToTracker={handleSwitchToTracker} />
+                ) : (
+                    <>
+                        <Sidebar
+                            onStartTracking={handleStartTracking}
+                            onStopTracking={handleStopTracking}
+                            isTracking={isTracking}
+                            isLoading={false}
+                            config={config}
+                            visible={sidebarVisible}
+                            onLoadHistoricalDate={handleLoadHistoricalDate}
+                        />
+                        <MainContent
+                            data={data}
+                            config={config}
+                            isTracking={isTracking}
+                            selectedDate={selectedDate}
+                            availableDates={availableDates}
+                            onDateChange={handleDateChange}
+                        />
+                    </>
+                )}
             </div>
         </ThemeProvider>
     );

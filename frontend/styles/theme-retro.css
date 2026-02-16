@@ -207,6 +207,59 @@
         0 0 20px rgba(255, 215, 0, 0.3);
 }
 
+/* Watchlist table - CRT glow */
+[data-theme="retro"] .watchlist-table-container {
+    border-radius: 0;
+    border: 1px solid var(--accent-primary);
+    box-shadow:
+        inset 0 0 20px rgba(255, 215, 0, 0.03),
+        0 0 10px rgba(255, 215, 0, 0.2);
+}
+
+[data-theme="retro"] .watchlist-table thead {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--accent-primary);
+    box-shadow: 0 1px 10px rgba(255, 215, 0, 0.2);
+}
+
+[data-theme="retro"] .watchlist-table th {
+    font-family: var(--font-display);
+    letter-spacing: 0.2em;
+    color: var(--accent-primary);
+    text-shadow: 0 0 5px var(--accent-primary);
+}
+
+[data-theme="retro"] .watchlist-table th.sortable:hover {
+    text-shadow:
+        0 0 5px var(--accent-primary),
+        0 0 10px var(--accent-primary);
+}
+
+[data-theme="retro"] .sort-icon.asc,
+[data-theme="retro"] .sort-icon.desc {
+    color: var(--accent-primary);
+    text-shadow: 0 0 8px var(--accent-primary);
+    animation: retroGlow 1.5s ease-in-out infinite;
+}
+
+@keyframes retroGlow {
+    0%, 100% {
+        text-shadow: 0 0 5px var(--accent-primary);
+    }
+    50% {
+        text-shadow: 0 0 12px var(--accent-primary);
+    }
+}
+
+[data-theme="retro"] .watchlist-table tbody tr:hover {
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+}
+
+[data-theme="retro"] .cell-ticker {
+    font-family: var(--font-display);
+    text-shadow: 0 0 5px var(--accent-primary);
+}
+
 /* Scrollbar */
 [data-theme="retro"]::-webkit-scrollbar-thumb {
     background: var(--accent-primary);

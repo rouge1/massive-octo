@@ -251,6 +251,59 @@
     text-shadow: none !important;
 }
 
+/* Watchlist table - Brutalist precision */
+[data-theme="swiss"] .watchlist-table-container {
+    border-radius: 0;
+    border: 2px solid var(--text-primary);
+}
+
+[data-theme="swiss"] .watchlist-table thead {
+    background: var(--text-primary);
+    border-bottom: 2px solid var(--text-primary);
+}
+
+[data-theme="swiss"] .watchlist-table th {
+    color: var(--bg-primary);
+    font-weight: 700;
+    letter-spacing: 0.15em;
+}
+
+[data-theme="swiss"] .watchlist-table th.sortable:hover {
+    color: var(--bg-hover);
+}
+
+[data-theme="swiss"] .sort-icon {
+    color: var(--bg-primary);
+    width: 20px;
+    height: 20px;
+    vertical-align: middle;
+    transform: translateY(-2px);
+}
+
+[data-theme="swiss"] .sort-icon::before {
+    font-size: 25px;
+    font-weight: 900;
+}
+
+[data-theme="swiss"] .sort-icon.asc,
+[data-theme="swiss"] .sort-icon.desc {
+    color: var(--accent-primary);
+}
+
+[data-theme="swiss"] .watchlist-table tbody tr:hover {
+    background: var(--bg-hover);
+    transform: none;
+}
+
+[data-theme="swiss"] .watchlist-table tbody tr {
+    border-bottom: 1px solid var(--text-primary);
+}
+
+[data-theme="swiss"] .type-badge {
+    border: 1px solid var(--text-primary);
+    font-weight: 700;
+}
+
 /* Scrollbar */
 [data-theme="swiss"]::-webkit-scrollbar {
     width: 12px;

@@ -137,6 +137,31 @@
     transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
+/* Watchlist table - Smooth gradients */
+[data-theme="fintech"] .watchlist-table-container {
+    background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-secondary) 100%);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="fintech"] .watchlist-table thead {
+    background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+    border-bottom: 1px solid rgba(124, 58, 237, 0.2);
+}
+
+[data-theme="fintech"] .watchlist-table th.sortable:hover {
+    color: var(--accent-primary);
+}
+
+[data-theme="fintech"] .sort-icon.asc,
+[data-theme="fintech"] .sort-icon.desc {
+    color: var(--accent-primary);
+}
+
+[data-theme="fintech"] .watchlist-table tbody tr:hover {
+    background: linear-gradient(90deg, transparent 0%, rgba(124, 58, 237, 0.1) 50%, transparent 100%);
+    transform: scale(1.01);
+}
+
 /* Scrollbar */
 [data-theme="fintech"]::-webkit-scrollbar-thumb {
     background: var(--accent-primary);

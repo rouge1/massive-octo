@@ -18,6 +18,9 @@ from pydantic import BaseModel
 DATA_DIR = Path(__file__).parent.parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
+# Watchlist storage
+WATCHLIST_FILE = DATA_DIR / "watchlist.json"
+
 from api_client import (
     list_available_strikes,
     list_available_contracts,
@@ -85,6 +88,25 @@ class SnapshotResponse(BaseModel):
     stock_price: float
     spread_pct: float
     option_data: OptionData
+
+
+# Watchlist models
+class WatchlistItem(BaseModel):
+    id: str
+    ticker: str
+    strike: float
+    put_call: str
+    expiration: str
+    contract: str
+    added_at: str
+
+
+class WatchlistAddRequest(BaseModel):
+    ticker: str
+    strike: float
+    put_call: str
+    expiration: str
+    contract: str
 
 
 # REST Endpoints
@@ -278,6 +300,119 @@ async def clear_data(ticker: str, strike: float, put_call: str, date_str: Option
         if deleted_count > 0:
             return {"status": "cleared", "deleted_files": deleted_count}
         return {"status": "not_found"}
+
+
+# Watchlist Endpoints
+def load_watchlist() -> list[dict]:
+    """Load watchlist from file."""
+    if not WATCHLIST_FILE.exists():
+        return []
+    try:
+        with open(WATCHLIST_FILE, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return []
+
+
+def save_watchlist(items: list[dict]):
+    """Save watchlist to file."""
+    try:
+        with open(WATCHLIST_FILE, "w") as f:
+            json.dump(items, f, indent=2)
+    except IOError as e:
+        raise Exception(f"Failed to save watchlist: {e}")
+
+
+@app.get("/api/watchlist")
+async def get_watchlist():
+    """Get all watchlist items."""
+    items = load_watchlist()
+    return {"items": items}
+
+
+@app.post("/api/watchlist")
+async def add_to_watchlist(item: WatchlistAddRequest):
+    """Add an item to the watchlist."""
+    items = load_watchlist()
+    
+    # Generate unique ID
+    import uuid
+    new_item = {
+        "id": str(uuid.uuid4()),
+        "ticker": item.ticker.upper(),
+        "strike": item.strike,
+        "put_call": item.put_call,
+        "expiration": item.expiration,
+        "contract": item.contract,
+        "added_at": datetime.now().isoformat()
+    }
+    
+    items.append(new_item)
+    save_watchlist(items)
+    
+    return {"status": "added", "item": new_item}
+
+
+@app.delete("/api/watchlist/{item_id}")
+async def remove_from_watchlist(item_id: str):
+    """Remove an item from the watchlist."""
+    items = load_watchlist()
+    original_count = len(items)
+    
+    items = [item for item in items if item["id"] != item_id]
+    
+    if len(items) < original_count:
+        save_watchlist(items)
+        return {"status": "removed"}
+    else:
+        return {"status": "not_found"}
+
+
+@app.get("/api/watchlist/{item_id}/snapshot")
+async def get_watchlist_snapshot(item_id: str):
+    """Get current snapshot for a watchlist item."""
+    items = load_watchlist()
+    item = next((i for i in items if i["id"] == item_id), None)
+    
+    if not item:
+        return {"error": "Item not found"}
+    
+    try:
+        timestamp, premium, stock_price, spread_pct, option_data = fetch_snapshot(
+            item["ticker"],
+            item["contract"],
+            item["expiration"],
+            item["strike"],
+            item["put_call"]
+        )
+        
+        # Convert numpy types to native Python types
+        def to_native(val):
+            if val is None:
+                return None
+            try:
+                return val.item()
+            except (AttributeError, ValueError):
+                return val
+        
+        return {
+            "id": item_id,
+            "timestamp": timestamp.isoformat(),
+            "premium": to_native(premium),
+            "stock_price": to_native(stock_price),
+            "spread_pct": to_native(spread_pct),
+            "option_data": {
+                "bid": to_native(option_data["bid"]),
+                "ask": to_native(option_data["ask"]),
+                "mid": to_native(option_data["mid"]),
+                "last": to_native(option_data["last"]),
+                "volume": int(option_data["volume"]) if option_data["volume"] is not None else None,
+                "open_interest": int(option_data["open_interest"]) if option_data["open_interest"] is not None else None,
+                "iv": to_native(option_data["iv"]),
+            }
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # WebSocket for real-time streaming
