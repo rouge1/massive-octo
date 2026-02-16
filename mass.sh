@@ -1,6 +1,8 @@
 #!/bin/bash
 
-PROJECT_DIR="/data/python/massive"
+# Get the directory where this script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_DIR="$SCRIPT_DIR"
 CONFIG_DIR="$PROJECT_DIR/config"
 mkdir -p "$CONFIG_DIR"
 
