@@ -1,0 +1,93 @@
+[STOCK_CHECK_PROMPT]
+Carefully examine the product page image to determine if the product is in stock or out of stock.
+
+SPECIAL RULE: If the page is about financial stocks, shares, or investments 
+(e.g., stock ticker pages for TSLA, AAPL, company earnings, stock charts, Yahoo Finance, Bloomberg), 
+ALWAYS consider the product "in stock" and return yes. These are NOT out-of-stock product pages.
+
+Look for indicators such as:
+- Stock counters showing >0 (in stock = yes)
+- "Add to Cart" or "Buy Now" buttons (in stock = yes)
+
+- if there is no price present (in stock = no)
+- "Out of Stock", "Sold Out", "Currently Unavailable", or "Notify Me When Available" messages (in stock = no)
+- "Notify Me When Back in Stock" (in stock = no)
+- Disabled/grayed-out purchase buttons (in stock = no)
+- Any unavailability indicators (in stock = no)
+- If there is no price shown, it often indicates out of stock (in stock = no)
+- "Out of stock online" (in_stock = no)
+- "Check Retail Inventory" (in_stock = no)
+
+Return a **valid XML document**:
+<product>
+    <in_stock>yes/no</in_stock>
+</product>
+
+Respond with XML only. No extra text or explanation.
+
+[DESCRIPTION_PROMPT]
+Carefully examine the product image and any visible text on the page.
+
+Identify the main product being sold. Provide a clear, concise, neutral description of the product itself.
+Respond once in a concise, complete XML format without repeating any phrases or sections.
+
+Prioritize:
+1. The prominent product title or headline text if visible and accurate
+2. If no clear title, infer from visible branding, model names, and features
+
+Description guidelines:
+- 10–25 words maximum
+- Include brand, product type, key attributes (color, size, material if clearly visible and relevant)
+- Do not include price, stock status, shipping, ratings, or seller info
+- Do not copy marketing hype (e.g., avoid "revolutionary", "best ever")
+- If multiple similar products are shown, describe the primary one
+
+Examples:
+Good: "Nike Air Force 1 '07 Men's White Sneakers, Size 10"
+Good: "Apple AirPods Pro (2nd Generation) Wireless Earbuds with MagSafe Charging Case"
+Good: "Sony WH-1000XM5 Wireless Noise-Canceling Over-Ear Headphones, Black"
+
+Return only a valid XML document:
+<product>
+    <description>Your concise description here</description>
+</product>
+
+No extra text or explanation.
+
+[PRICE_EXTRACTION_PROMPT]
+Carefully read the price text character by character.
+Prioritize the main displayed price (sale or discounted price if present, usually larger/red).
+Include exact currency symbol and formatting. Ignore totals, shipping, or taxes.
+
+Look for the main price displayed (sale price if on sale).
+
+Return a **valid XML document**:
+<product>
+    <price>Exact price with currency symbol (e.g., $29.99)</price>
+</product>
+
+If no price is visible, return:
+<product>
+    <price>not found</price>
+</product>
+
+Respond with XML only. No extra text.
+
+[PRICE_VARIANCE_VERIFICATION_PROMPT]
+Please carefully examine this image and extract the exact price shown.
+    
+    The previous recorded price was {previous_price}. We need to verify if the current price
+    has changed significantly.
+    
+    Look carefully at:
+    - The main product price displayed
+    - Any sale or discounted prices
+    - Currency symbols and decimal separators
+    
+    Return a **valid XML document** with:
+    <product>
+        <price>Exact price shown in the image, including currency symbol</price>
+        <confidence>high/medium/low - your confidence in the price extraction</confidence>
+    </product>
+    
+    Respond with XML only. No extra text.

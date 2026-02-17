@@ -1,8 +1,7 @@
 const { useState, useEffect, useRef, useCallback, createContext, useContext } = React;
 
 // API Configuration
-const API_BASE = 'http://localhost:8000';
-const WS_URL = 'ws://localhost:8000/ws/track';
+const API_BASE = '';  // Same origin - will use current host
 
 // Theme Context
 const ThemeContext = createContext();
@@ -69,22 +68,9 @@ const chartColors = {
 };
 
 // Header Component
-function Header({ connectionStatus, isTracking, sidebarVisible, onToggleSidebar, marketStatus, view, onSwitchView, onAddToWatchlist, onAddNewOption }) {
+function Header({ marketStatus }) {
     const { theme, setTheme } = useTheme();
     const themes = ['bloomberg', 'fintech', 'retro', 'swiss'];
-
-    const getStatusClass = () => {
-        if (isTracking) return 'tracking';
-        if (connectionStatus === 'connected') return 'connected';
-        return '';
-    };
-
-    const getStatusText = () => {
-        if (isTracking) return 'Tracking';
-        if (connectionStatus === 'connected') return 'Connected';
-        if (connectionStatus === 'connecting') return 'Connecting...';
-        return 'Disconnected';
-    };
 
     const getMarketStatusText = () => {
         if (!marketStatus) return '';
@@ -105,15 +91,6 @@ function Header({ connectionStatus, isTracking, sidebarVisible, onToggleSidebar,
     return (
         <header className="header">
             <div className="header-left">
-                {view === 'tracker' && (
-                    <button
-                        className="config-toggle-btn"
-                        onClick={onToggleSidebar}
-                        title={sidebarVisible ? 'Hide Config' : 'Show Config'}
-                    >
-                        {sidebarVisible ? '\u2715' : '\u2630'}
-                    </button>
-                )}
                 <div className="logo">
                     <svg className="logo-icon" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M3 13h1v7c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-7h1a1 1 0 0 0 .4-1.92l-9-4a1 1 0 0 0-.8 0l-9 4A1 1 0 0 0 3 13zm7 6v-4h4v4h-4zm6-4h2v4h-2v-4zM6 15h2v4H6v-4z"/>
@@ -121,45 +98,12 @@ function Header({ connectionStatus, isTracking, sidebarVisible, onToggleSidebar,
                     </svg>
                     Options Premium Tracker
                 </div>
-                <div className="view-nav">
-                    <button
-                        className={`view-nav-btn ${view === 'watchlist' ? 'active' : ''}`}
-                        onClick={() => view !== 'watchlist' && onSwitchView()}
-                    >
-                        📋 Watchlist
-                    </button>
-                    <button
-                        className={`view-nav-btn ${view === 'tracker' ? 'active' : ''}`}
-                        onClick={() => view !== 'tracker' && onSwitchView()}
-                    >
-                        📈 Tracker
-                    </button>
-                    {onAddNewOption && (
-                        <button
-                            className="view-nav-btn add-option-btn"
-                            onClick={onAddNewOption}
-                        >
-                            + Add Option
-                        </button>
-                    )}
-                </div>
             </div>
             <div className="header-controls">
-                {onAddToWatchlist && (
-                    <button className="btn-add-watchlist" onClick={onAddToWatchlist}>
-                        + Add to Watchlist
-                    </button>
-                )}
                 {marketStatus && (
                     <div className="connection-status">
                         <span className={`status-dot ${getMarketStatusClass()}`}></span>
                         {getMarketStatusText()}
-                    </div>
-                )}
-                {view === 'tracker' && (
-                    <div className="connection-status">
-                        <span className={`status-dot ${getStatusClass()}`}></span>
-                        {getStatusText()}
                     </div>
                 )}
                 <div className="theme-switcher">
@@ -207,7 +151,7 @@ function saveFormState(state) {
 }
 
 // Sidebar Component
-function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, config, visible, onLoadHistoricalDate }) {
+function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, config, visible }) {
     const savedState = loadFormState();
     const [ticker, setTicker] = useState(savedState?.ticker || 'AAPL');
     const [putCall, setPutCall] = useState(savedState?.putCall || 'call');
@@ -218,7 +162,6 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, confi
     const [stockPrice, setStockPrice] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
-    const [historicalDates, setHistoricalDates] = useState([]);
 
     // Save form state when values change (skip initial render)
     const hasMountedRef = useRef(false);
@@ -262,26 +205,15 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, confi
                 setSelectedStrike(saved.strike);
 
                 // Also load contracts if we have a saved contract
-                if (saved?.contract?.ticker) {
+                if (saved?.contract?.contract_symbol) {
                     const contractRes = await fetch(`${API_BASE}/api/contracts/${ticker.toUpperCase()}/${saved.strike}/${putCall}`);
                     if (contractRes.ok) {
                         const contractData = await contractRes.json();
                         setContracts(contractData.contracts);
-                        const matchingContract = contractData.contracts.find(c => c.ticker === saved.contract.ticker);
+                        const matchingContract = contractData.contracts.find(c => c.contract_symbol === saved.contract.contract_symbol);
                         if (matchingContract) {
                             setSelectedContract(matchingContract);
                         }
-                    }
-
-                    // Also fetch historical dates for this strike/type combo
-                    try {
-                        const datesRes = await fetch(`${API_BASE}/api/data/dates/${ticker.toUpperCase()}/${saved.strike}/${putCall}`);
-                        if (datesRes.ok) {
-                            const datesData = await datesRes.json();
-                            setHistoricalDates(datesData.dates || []);
-                        }
-                    } catch (e) {
-                        console.error('Failed to fetch historical dates:', e);
                     }
                 }
             }
@@ -304,16 +236,20 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, confi
             const res = await fetch(`${API_BASE}/api/strikes/${ticker.toUpperCase()}/${putCall}`);
             if (!res.ok) throw new Error('Failed to load strikes');
             const data = await res.json();
-            setStrikes(data.strikes);
-            setStockPrice(data.stock_price);
+            if (!data.strikes || data.strikes.length === 0) {
+                setError('No options found for this ticker. Check the symbol or try again.');
+            } else {
+                setStrikes(data.strikes);
+                setStockPrice(data.stock_price);
 
-            // Restore saved strike if it exists in the loaded strikes
-            const saved = loadFormState();
-            if (saved?.strike && data.strikes.includes(saved.strike)) {
-                setSelectedStrike(saved.strike);
+                // Restore saved strike if it exists in the loaded strikes
+                const saved = loadFormState();
+                if (saved?.strike && data.strikes.includes(saved.strike)) {
+                    setSelectedStrike(saved.strike);
+                }
             }
         } catch (e) {
-            setError(e.message);
+            setError(`Failed to load strikes: ${e.message}`);
         } finally {
             setLoading(false);
         }
@@ -325,7 +261,6 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, confi
         setError(null);
         setContracts([]);
         setSelectedContract(null);
-        setHistoricalDates([]);
 
         try {
             const res = await fetch(`${API_BASE}/api/contracts/${ticker.toUpperCase()}/${selectedStrike}/${putCall}`);
@@ -335,22 +270,11 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, confi
 
             // Restore saved contract if it exists in the loaded contracts
             const saved = loadFormState();
-            if (saved?.contract?.ticker) {
-                const matchingContract = data.contracts.find(c => c.ticker === saved.contract.ticker);
+            if (saved?.contract?.contract_symbol) {
+                const matchingContract = data.contracts.find(c => c.contract_symbol === saved.contract.contract_symbol);
                 if (matchingContract) {
                     setSelectedContract(matchingContract);
                 }
-            }
-
-            // Fetch historical dates for this strike/type combo
-            try {
-                const datesRes = await fetch(`${API_BASE}/api/data/dates/${ticker.toUpperCase()}/${selectedStrike}/${putCall}`);
-                if (datesRes.ok) {
-                    const datesData = await datesRes.json();
-                    setHistoricalDates(datesData.dates || []);
-                }
-            } catch (e) {
-                console.error('Failed to fetch historical dates:', e);
             }
         } catch (e) {
             setError(e.message);
@@ -363,7 +287,7 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, confi
         if (!selectedContract) return;
         onStartTracking({
             ticker: ticker.toUpperCase(),
-            contract: selectedContract.ticker,
+            contract: selectedContract.contract_symbol,
             expiration: selectedContract.expiration,
             strike: selectedStrike,
             put_call: putCall,
@@ -378,28 +302,8 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, confi
         setSelectedStrike(null);
         setSelectedContract(null);
         setStockPrice(null);
-        setHistoricalDates([]);
         // Clear saved form state except ticker/putCall
         saveFormState({ ticker, putCall, strike: null, contract: null });
-    };
-
-    const handleHistoricalDateClick = (dateStr) => {
-        if (!selectedContract) return;
-        const trackingConfig = {
-            ticker: ticker.toUpperCase(),
-            contract: selectedContract.ticker,
-            expiration: selectedContract.expiration,
-            strike: selectedStrike,
-            put_call: putCall,
-            dte: selectedContract.dte
-        };
-        onLoadHistoricalDate(trackingConfig, dateStr);
-    };
-
-    // Format date for display
-    const formatDateForDisplay = (dateStr) => {
-        const d = new Date(dateStr + 'T00:00:00');
-        return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     };
 
     if (!visible) return null;
@@ -491,16 +395,16 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, confi
                         <label className="form-label">Expiration Date</label>
                         <select
                             className="form-select"
-                            value={selectedContract ? selectedContract.ticker : ''}
+                            value={selectedContract ? selectedContract.contract_symbol : ''}
                             onChange={e => {
-                                const c = contracts.find(c => c.ticker === e.target.value);
+                                const c = contracts.find(c => c.contract_symbol === e.target.value);
                                 setSelectedContract(c);
                             }}
                             disabled={isTracking}
                         >
                             <option value="">Select expiration...</option>
                             {contracts.map(c => (
-                                <option key={c.ticker} value={c.ticker}>
+                                <option key={c.contract_symbol} value={c.contract_symbol}>
                                     {c.expiration} ({c.dte} DTE)
                                 </option>
                             ))}
@@ -543,23 +447,6 @@ function Sidebar({ onStartTracking, onStopTracking, isTracking, isLoading, confi
                 </button>
             </div>
 
-            {selectedContract && historicalDates.length > 0 && (
-                <div className="sidebar-section">
-                    <div className="divider"></div>
-                    <div className="sidebar-title">Historical Data</div>
-                    <div className="historical-dates-list">
-                        {historicalDates.map(dateStr => (
-                            <button
-                                key={dateStr}
-                                className="historical-date-btn"
-                                onClick={() => handleHistoricalDateClick(dateStr)}
-                            >
-                                {formatDateForDisplay(dateStr)}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
         </aside>
     );
 }
@@ -969,7 +856,7 @@ function DayNavigator({ selectedDate, availableDates, onDateChange, isTracking, 
 }
 
 // Main Content Component
-function MainContent({ data, config, isTracking, selectedDate, availableDates, onDateChange }) {
+function MainContent({ data, config, isTracking }) {
     const [isDataTableOpen, setIsDataTableOpen] = useState(false);
 
     if (!config) {
@@ -981,7 +868,7 @@ function MainContent({ data, config, isTracking, selectedDate, availableDates, o
     }
 
     const todayStr = getTodayStr();
-    const isViewingToday = selectedDate === todayStr;
+    const isViewingToday = true; // Always viewing latest data now
 
     return (
         <main className="main">
@@ -994,33 +881,17 @@ function MainContent({ data, config, isTracking, selectedDate, availableDates, o
                             Waiting for data... First fetch will happen shortly.
                         </div>
                     </div>
-                    <div className="chart-footer-row">
-                        <DayNavigator
-                            selectedDate={selectedDate}
-                            availableDates={availableDates}
-                            onDateChange={onDateChange}
-                            isTracking={isTracking}
-                            config={config}
-                        />
-                    </div>
+                    {/* Day Navigator removed - using real-time data only */}
                 </>
             ) : data.length === 0 ? (
                 <>
                     <div className="empty-state">
                         <div className="empty-state-icon">📅</div>
                         <div className="empty-state-text">
-                            No data for this date.
+                            No data available yet.
                         </div>
                     </div>
-                    <div className="chart-footer-row">
-                        <DayNavigator
-                            selectedDate={selectedDate}
-                            availableDates={availableDates}
-                            onDateChange={onDateChange}
-                            isTracking={isTracking}
-                            config={config}
-                        />
-                    </div>
+                    {/* Day Navigator removed - using real-time data only */}
                 </>
             ) : (
                 <>
@@ -1028,17 +899,9 @@ function MainContent({ data, config, isTracking, selectedDate, availableDates, o
                     <div className="chart-data-wrapper">
                         {/* Chart is hidden when data table is expanded */}
                         {!isDataTableOpen && <Chart data={data} />}
-                        {/* Footer row with Day Navigator and Raw Data toggle side by side */}
+                        {/* Footer row with Raw Data toggle */}
                         <div className="chart-footer-row">
-                            {!isDataTableOpen && (
-                                <DayNavigator
-                                    selectedDate={selectedDate}
-                                    availableDates={availableDates}
-                                    onDateChange={onDateChange}
-                                    isTracking={isTracking}
-                                    config={config}
-                                />
-                            )}
+                            {/* Day Navigator removed - using real-time data only */}
                             <DataTableToggleHeader
                                 isOpen={isDataTableOpen}
                                 onToggle={() => setIsDataTableOpen(!isDataTableOpen)}
@@ -1054,7 +917,7 @@ function MainContent({ data, config, isTracking, selectedDate, availableDates, o
 }
 
 // Watchlist Row Component
-function WatchlistRow({ item, onRemove, onTrack }) {
+function WatchlistRow({ item, onRemove }) {
     const [snapshot, setSnapshot] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -1095,10 +958,6 @@ function WatchlistRow({ item, onRemove, onTrack }) {
 
     const dte = calculateDTE(item.expiration);
 
-    const handleRowClick = () => {
-        onTrack(item);
-    };
-
     const handleRemove = (e) => {
         e.stopPropagation();
         if (confirm(`Remove ${item.ticker} $${item.strike.toFixed(2)} ${item.put_call.toUpperCase()} from watchlist?`)) {
@@ -1107,7 +966,7 @@ function WatchlistRow({ item, onRemove, onTrack }) {
     };
 
     return (
-        <tr className="watchlist-row" onClick={handleRowClick}>
+        <tr className="watchlist-row">
             <td className="cell-ticker">{item.ticker}</td>
             <td className="cell-strike">${item.strike.toFixed(2)}</td>
             <td className="cell-type">
@@ -1198,27 +1057,224 @@ function WatchlistTableHeader({ sortBy, sortDirection, onSort }) {
     );
 }
 
+// Quick-Add Card Component
+function QuickAddCard({ onAdded }) {
+    const [ticker, setTicker] = useState('');
+    const [putCall, setPutCall] = useState('call');
+    const [strikes, setStrikes] = useState([]);
+    const [selectedStrike, setSelectedStrike] = useState('');
+    const [contracts, setContracts] = useState([]);
+    const [selectedContract, setSelectedContract] = useState('');
+    const [status, setStatus] = useState('idle'); // idle | loading-strikes | strikes | loading-contracts | contracts | adding
+    const [error, setError] = useState(null);
+
+    const isLoading = status === 'loading-strikes' || status === 'loading-contracts' || status === 'adding';
+
+    const loadStrikes = async () => {
+        if (!ticker.trim()) return;
+        setStatus('loading-strikes');
+        setError(null);
+        setStrikes([]);
+        setSelectedStrike('');
+        setContracts([]);
+        setSelectedContract('');
+
+        try {
+            const res = await fetch(`${API_BASE}/api/strikes/${ticker.trim().toUpperCase()}/${putCall}`);
+            if (!res.ok) throw new Error('Failed to load strikes');
+            const data = await res.json();
+            if (!data.strikes || data.strikes.length === 0) {
+                throw new Error('No options found for this ticker');
+            }
+            setStrikes(data.strikes);
+            setStatus('strikes');
+        } catch (e) {
+            setError(e.message);
+            setStatus('idle');
+        }
+    };
+
+    const handleTickerKeyDown = (e) => {
+        if (e.key === 'Enter' && ticker.trim()) {
+            loadStrikes();
+        }
+    };
+
+    const handleStrikeChange = async (e) => {
+        const strike = e.target.value;
+        setSelectedStrike(strike);
+        setContracts([]);
+        setSelectedContract('');
+
+        if (!strike) {
+            setStatus('strikes');
+            return;
+        }
+
+        setStatus('loading-contracts');
+        setError(null);
+
+        try {
+            const res = await fetch(`${API_BASE}/api/contracts/${ticker.trim().toUpperCase()}/${strike}/${putCall}`);
+            if (!res.ok) throw new Error('Failed to load contracts');
+            const data = await res.json();
+            setContracts(data.contracts || []);
+            setStatus('contracts');
+        } catch (e) {
+            setError(e.message);
+            setStatus('strikes');
+        }
+    };
+
+    const handleAdd = async () => {
+        if (!selectedContract) return;
+        const contract = contracts.find(c => c.contract_symbol === selectedContract);
+        if (!contract) return;
+
+        setStatus('adding');
+        setError(null);
+
+        try {
+            const res = await fetch(`${API_BASE}/api/watchlist`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ticker: ticker.trim().toUpperCase(),
+                    strike: parseFloat(selectedStrike),
+                    put_call: putCall,
+                    expiration: contract.expiration,
+                    contract_symbol: contract.contract_symbol
+                })
+            });
+            if (!res.ok) throw new Error('Failed to add to watchlist');
+
+            // Reset to idle
+            setTicker('');
+            setPutCall('call');
+            setStrikes([]);
+            setSelectedStrike('');
+            setContracts([]);
+            setSelectedContract('');
+            setStatus('idle');
+            onAdded();
+        } catch (e) {
+            setError(e.message);
+            setStatus('contracts');
+        }
+    };
+
+    return (
+        <div className="quick-add-card">
+            <div className="quick-add-row">
+                <input
+                    type="text"
+                    className="quick-add-ticker"
+                    value={ticker}
+                    onChange={e => setTicker(e.target.value.toUpperCase())}
+                    onKeyDown={handleTickerKeyDown}
+                    placeholder="TICKER"
+                    disabled={isLoading}
+                />
+                <div className="quick-add-putcall">
+                    <button
+                        className={`putcall-btn ${putCall === 'call' ? 'active' : ''}`}
+                        onClick={() => setPutCall('call')}
+                        disabled={isLoading}
+                    >CALL</button>
+                    <button
+                        className={`putcall-btn ${putCall === 'put' ? 'active' : ''}`}
+                        onClick={() => setPutCall('put')}
+                        disabled={isLoading}
+                    >PUT</button>
+                </div>
+                <select
+                    className="quick-add-select"
+                    value={selectedStrike}
+                    onChange={handleStrikeChange}
+                    disabled={isLoading || strikes.length === 0}
+                >
+                    <option value="">Strike {strikes.length === 0 ? '—' : '▾'}</option>
+                    {strikes.map(s => (
+                        <option key={s} value={s}>${s.toFixed(2)}</option>
+                    ))}
+                </select>
+                <select
+                    className="quick-add-select"
+                    value={selectedContract}
+                    onChange={e => setSelectedContract(e.target.value)}
+                    disabled={isLoading || contracts.length === 0}
+                >
+                    <option value="">DTE {contracts.length === 0 ? '—' : '▾'}</option>
+                    {contracts.map(c => (
+                        <option key={c.contract_symbol} value={c.contract_symbol}>
+                            {c.expiration} ({c.dte}d)
+                        </option>
+                    ))}
+                </select>
+                <button
+                    className="quick-add-btn"
+                    onClick={handleAdd}
+                    disabled={isLoading || !selectedContract}
+                >
+                    {status === 'adding' ? <span className="spinner-small"></span> : '+ Add'}
+                </button>
+            </div>
+            {error && <div className="quick-add-error">{error}</div>}
+            {status === 'loading-strikes' && <div className="quick-add-hint">Loading strikes...</div>}
+            {status === 'idle' && !error && <div className="quick-add-hint">Type a ticker and press Enter</div>}
+        </div>
+    );
+}
+
 // Watchlist View Component
-function WatchlistView({ onSwitchToTracker }) {
+function WatchlistView() {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [sortBy, setSortBy] = useState('ticker'); // default sort
     const [sortDirection, setSortDirection] = useState('asc');
+    const eventSourceRef = useRef(null);
 
-    // Load watchlist
+    // SSE connection for real-time watchlist updates
     useEffect(() => {
+        // Initial load
         const loadWatchlist = async () => {
             try {
                 const res = await fetch(`${API_BASE}/api/watchlist`);
                 const data = await res.json();
-                setItems(data.items || []);
+                setItems(data || []);
+                setLoading(false);
             } catch (e) {
                 console.error('Failed to load watchlist:', e);
-            } finally {
                 setLoading(false);
             }
         };
         loadWatchlist();
+
+        // Setup SSE for real-time updates
+        const eventSource = new EventSource(`${API_BASE}/sse/watchlist`);
+        
+        eventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                setItems(data || []);
+            } catch (e) {
+                console.error('Failed to parse SSE data:', e);
+            }
+        };
+        
+        eventSource.onerror = (error) => {
+            console.error('SSE error:', error);
+            eventSource.close();
+        };
+        
+        eventSourceRef.current = eventSource;
+
+        // Cleanup on unmount
+        return () => {
+            if (eventSourceRef.current) {
+                eventSourceRef.current.close();
+            }
+        };
     }, []);
 
     // Helper to calculate DTE
@@ -1261,6 +1317,16 @@ function WatchlistView({ onSwitchToTracker }) {
         setSortDirection(direction);
     };
 
+    const refreshWatchlist = async () => {
+        try {
+            const res = await fetch(`${API_BASE}/api/watchlist`);
+            const data = await res.json();
+            setItems(data || []);
+        } catch (e) {
+            console.error('Failed to refresh watchlist:', e);
+        }
+    };
+
     const handleRemove = async (itemId) => {
         try {
             await fetch(`${API_BASE}/api/watchlist/${itemId}`, {
@@ -1271,17 +1337,6 @@ function WatchlistView({ onSwitchToTracker }) {
             console.error('Failed to remove item:', e);
             alert('Failed to remove option from watchlist. Please try again.');
         }
-    };
-
-    const handleTrack = (item) => {
-        // Switch to tracker view with this item's config
-        onSwitchToTracker({
-            ticker: item.ticker,
-            strike: item.strike,
-            put_call: item.put_call,
-            expiration: item.expiration,
-            contract: item.contract,
-        });
     };
 
     if (loading) {
@@ -1298,14 +1353,9 @@ function WatchlistView({ onSwitchToTracker }) {
     if (items.length === 0) {
         return (
             <main className="main">
-                <div className="empty-state">
-                    <div className="empty-state-icon">📊</div>
-                    <div className="empty-state-text">
-                        Your watchlist is empty. Add options to track their premiums.
-                    </div>
-                    <button className="btn-primary" onClick={() => onSwitchToTracker(null)}>
-                        Add Your First Option
-                    </button>
+                <QuickAddCard onAdded={refreshWatchlist} />
+                <div className="watchlist-empty-text">
+                    Your watchlist is empty.
                 </div>
             </main>
         );
@@ -1313,6 +1363,7 @@ function WatchlistView({ onSwitchToTracker }) {
 
     return (
         <main className="main">
+            <QuickAddCard onAdded={refreshWatchlist} />
             <div className="watchlist-table-container">
                 <table className="watchlist-table">
                     <WatchlistTableHeader
@@ -1326,7 +1377,6 @@ function WatchlistView({ onSwitchToTracker }) {
                                 key={item.id}
                                 item={item}
                                 onRemove={handleRemove}
-                                onTrack={handleTrack}
                             />
                         ))}
                     </tbody>
@@ -1338,23 +1388,7 @@ function WatchlistView({ onSwitchToTracker }) {
 
 // Main App Component
 function App() {
-    const [view, setView] = useState('watchlist'); // 'watchlist' or 'tracker'
-    const [connectionStatus, setConnectionStatus] = useState('disconnected');
-    const [isTracking, setIsTracking] = useState(false);
-    const [config, setConfig] = useState(null);
-    const [data, setData] = useState([]);
-    const [sidebarVisible, setSidebarVisible] = useState(true);
     const [marketStatus, setMarketStatus] = useState(null);
-    const [selectedDate, setSelectedDate] = useState(getTodayStr);
-    const [availableDates, setAvailableDates] = useState([]);
-    const wsRef = useRef(null);
-    const configRef = useRef(null); // Track current config for saving snapshots
-    const selectedDateRef = useRef(selectedDate); // For closure in onmessage
-
-    // Keep selectedDateRef in sync
-    useEffect(() => {
-        selectedDateRef.current = selectedDate;
-    }, [selectedDate]);
 
     // Fetch market status on mount and every 5 minutes
     useEffect(() => {
@@ -1373,304 +1407,11 @@ function App() {
         return () => clearInterval(interval);
     }, []);
 
-    // Auto-hide sidebar when tracking starts
-    useEffect(() => {
-        if (isTracking) {
-            setSidebarVisible(false);
-        }
-    }, [isTracking]);
-
-    // Save snapshot to server
-    const saveSnapshot = useCallback(async (snapshot, trackingConfig) => {
-        if (!trackingConfig) return;
-        try {
-            await fetch(`${API_BASE}/api/data/save`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    ...snapshot,
-                    ticker: trackingConfig.ticker,
-                    strike: trackingConfig.strike,
-                    put_call: trackingConfig.put_call
-                })
-            });
-        } catch (e) {
-            console.error('Failed to save snapshot:', e);
-        }
-    }, []);
-
-    // Load saved data from server
-    const loadSavedData = useCallback(async (trackingConfig, dateStr = null) => {
-        try {
-            const dateParam = dateStr ? `?date=${dateStr}` : '';
-            const res = await fetch(
-                `${API_BASE}/api/data/load/${trackingConfig.ticker}/${trackingConfig.strike}/${trackingConfig.put_call}${dateParam}`
-            );
-            const data = await res.json();
-            return data.snapshots || [];
-        } catch (e) {
-            console.error('Failed to load saved data:', e);
-            return [];
-        }
-    }, []);
-
-    // Fetch available dates for a contract
-    const fetchAvailableDates = useCallback(async (trackingConfig) => {
-        try {
-            const res = await fetch(
-                `${API_BASE}/api/data/dates/${trackingConfig.ticker}/${trackingConfig.strike}/${trackingConfig.put_call}`
-            );
-            const data = await res.json();
-            return data.dates || [];
-        } catch (e) {
-            console.error('Failed to fetch available dates:', e);
-            return [];
-        }
-    }, []);
-
-    // Handle date change from day navigator
-    const handleDateChange = useCallback(async (newDate) => {
-        if (!config) return;
-        setSelectedDate(newDate);
-        const savedData = await loadSavedData(config, newDate);
-        setData(savedData);
-    }, [config, loadSavedData]);
-
-    // Handle loading historical date from sidebar
-    const handleLoadHistoricalDate = useCallback(async (trackingConfig, dateStr) => {
-        setConfig(trackingConfig);
-        configRef.current = trackingConfig;
-        setSelectedDate(dateStr);
-        selectedDateRef.current = dateStr;
-
-        // Fetch available dates for this contract
-        const dates = await fetchAvailableDates(trackingConfig);
-        const todayStr = getTodayStr();
-        if (!dates.includes(todayStr)) {
-            dates.unshift(todayStr);
-        }
-        setAvailableDates(dates);
-
-        // Load saved data for the selected date
-        const savedData = await loadSavedData(trackingConfig, dateStr);
-        setData(savedData);
-
-        // Hide sidebar after loading
-        setSidebarVisible(false);
-    }, [fetchAvailableDates, loadSavedData]);
-
-    const connect = useCallback(() => {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
-
-        setConnectionStatus('connecting');
-        const ws = new WebSocket(WS_URL);
-
-        ws.onopen = () => {
-            setConnectionStatus('connected');
-            console.log('WebSocket connected');
-        };
-
-        ws.onmessage = (event) => {
-            const msg = JSON.parse(event.data);
-
-            if (msg.type === 'snapshot') {
-                // Save snapshot to file
-                saveSnapshot(msg, configRef.current);
-
-                // Only append to UI if viewing today (use ref to avoid stale closure)
-                const todayStr = getTodayStr();
-                if (selectedDateRef.current === todayStr) {
-                    setData(prev => {
-                        const newData = [...prev, msg];
-                        return newData;
-                    });
-                }
-            } else if (msg.type === 'tracking_started') {
-                setIsTracking(true);
-            } else if (msg.type === 'tracking_stopped') {
-                setIsTracking(false);
-                // If stopped due to market closing, update market status
-                if (msg.market_status) {
-                    setMarketStatus(msg.market_status);
-                }
-                if (msg.message) {
-                    console.log('Tracking stopped:', msg.message);
-                }
-            } else if (msg.type === 'market_closed') {
-                // Update market status when we get this message
-                setMarketStatus(msg.market_status);
-                console.log('Market closed:', msg.message);
-            } else if (msg.type === 'error') {
-                console.error('Server error:', msg.message);
-            }
-        };
-
-        ws.onclose = () => {
-            setConnectionStatus('disconnected');
-            setIsTracking(false);
-            console.log('WebSocket disconnected');
-            // Attempt to reconnect after 3 seconds
-            setTimeout(connect, 3000);
-        };
-
-        ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-        };
-
-        wsRef.current = ws;
-    }, [saveSnapshot]);
-
-    useEffect(() => {
-        connect();
-        return () => {
-            if (wsRef.current) {
-                wsRef.current.close();
-            }
-        };
-    }, [connect]);
-
-    // Handle clicking outside sidebar to close it
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (sidebarVisible) {
-                const sidebar = document.querySelector('.sidebar');
-                const headerToggle = document.querySelector('.config-toggle-btn');
-                
-                // Close sidebar if click is outside sidebar and not on the header toggle button
-                if (sidebar && !sidebar.contains(event.target) && !headerToggle.contains(event.target)) {
-                    setSidebarVisible(false);
-                }
-            }
-        };
-
-        if (sidebarVisible) {
-            document.addEventListener('mousedown', handleClickOutside);
-        }
-
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [sidebarVisible]);
-
-    const handleStartTracking = async (trackingConfig) => {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            setConfig(trackingConfig);
-            configRef.current = trackingConfig;
-
-            // Reset to today when starting tracking
-            const todayStr = getTodayStr();
-            setSelectedDate(todayStr);
-            selectedDateRef.current = todayStr;
-
-            // Fetch available dates for this contract
-            const dates = await fetchAvailableDates(trackingConfig);
-            // Ensure today is in the list (even if no data yet)
-            if (!dates.includes(todayStr)) {
-                dates.unshift(todayStr);
-            }
-            setAvailableDates(dates);
-
-            // Load saved data for today BEFORE starting tracking
-            console.log('Loading saved data for:', trackingConfig, 'date:', todayStr);
-            const savedData = await loadSavedData(trackingConfig, todayStr);
-            console.log('Loaded', savedData.length, 'snapshots from file');
-
-            // Load all saved data for today
-            setData(savedData);
-
-            // Now start real-time tracking which will append to this data
-            wsRef.current.send(JSON.stringify({
-                action: 'start',
-                ...trackingConfig
-            }));
-        }
-    };
-
-    const handleStopTracking = () => {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ action: 'stop' }));
-        }
-        setIsTracking(false);
-    };
-
-    const handleSwitchToTracker = (itemConfig) => {
-        setView('tracker');
-        setSidebarVisible(true);
-        
-        // If itemConfig is provided, pre-populate the form
-        if (itemConfig) {
-            // The Sidebar will need to handle this pre-population
-            // For now, just switch to tracker view
-        }
-    };
-
-    const handleSwitchToWatchlist = () => {
-        setView('watchlist');
-        setSidebarVisible(false);
-        if (isTracking) {
-            handleStopTracking();
-        }
-    };
-
-    const handleAddToWatchlist = async () => {
-        if (!config) return;
-        
-        try {
-            await fetch(`${API_BASE}/api/watchlist`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    ticker: config.ticker,
-                    strike: config.strike,
-                    put_call: config.put_call,
-                    expiration: config.expiration,
-                    contract: config.contract,
-                })
-            });
-            alert('Added to watchlist!');
-        } catch (e) {
-            console.error('Failed to add to watchlist:', e);
-            alert('Failed to add to watchlist');
-        }
-    };
-
     return (
         <ThemeProvider>
             <div className="app">
-                <Header
-                    connectionStatus={connectionStatus}
-                    isTracking={isTracking}
-                    sidebarVisible={sidebarVisible}
-                    onToggleSidebar={() => setSidebarVisible(!sidebarVisible)}
-                    marketStatus={marketStatus}
-                    view={view}
-                    onSwitchView={view === 'watchlist' ? handleSwitchToTracker : handleSwitchToWatchlist}
-                    onAddToWatchlist={view === 'tracker' && config ? handleAddToWatchlist : null}
-                    onAddNewOption={view === 'watchlist' ? () => handleSwitchToTracker(null) : null}
-                />
-                {view === 'watchlist' ? (
-                    <WatchlistView onSwitchToTracker={handleSwitchToTracker} />
-                ) : (
-                    <>
-                        <Sidebar
-                            onStartTracking={handleStartTracking}
-                            onStopTracking={handleStopTracking}
-                            isTracking={isTracking}
-                            isLoading={false}
-                            config={config}
-                            visible={sidebarVisible}
-                            onLoadHistoricalDate={handleLoadHistoricalDate}
-                        />
-                        <MainContent
-                            data={data}
-                            config={config}
-                            isTracking={isTracking}
-                            selectedDate={selectedDate}
-                            availableDates={availableDates}
-                            onDateChange={handleDateChange}
-                        />
-                    </>
-                )}
+                <Header marketStatus={marketStatus} />
+                <WatchlistView />
             </div>
         </ThemeProvider>
     );

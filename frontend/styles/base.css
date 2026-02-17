@@ -1365,3 +1365,189 @@ body {
         font-size: 0.75rem;
     }
 }
+
+/* Quick-Add Card */
+/* Quick-Add Card — fixed-geometry row, never resizes when options load */
+.quick-add-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: var(--space-sm) var(--space-md);
+    margin-bottom: var(--space-md);
+}
+
+.quick-add-row {
+    display: flex;
+    align-items: stretch;
+    gap: var(--space-sm);
+    min-width: 0;
+}
+
+/* Ticker — fixed, never grows */
+.quick-add-ticker {
+    flex: 0 0 90px;
+    width: 90px;
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    transition: border-color 0.2s ease;
+}
+
+.quick-add-ticker:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+}
+
+.quick-add-ticker:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* CALL/PUT — fixed, never grows */
+.quick-add-putcall {
+    flex: 0 0 auto;
+    display: flex;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+}
+
+.putcall-btn {
+    padding: var(--space-xs) var(--space-sm);
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.putcall-btn.active {
+    background: var(--accent-primary);
+    color: var(--bg-primary);
+}
+
+.putcall-btn:hover:not(.active):not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.putcall-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/*
+ * Selects — flex: 1 1 0px is the key to no-resize:
+ * flex-basis: 0 means the item starts from 0 width (not content size),
+ * so populating <option> elements cannot influence the layout at all.
+ * Both selects grow equally from 0 to fill available space.
+ */
+.quick-add-select {
+    flex: 1 1 0px;
+    min-width: 0;
+    width: 0; /* reinforce basis-0 in all browsers */
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 24px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: border-color 0.2s ease;
+}
+
+.quick-add-select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+}
+
+.quick-add-select:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Add button — fixed, never grows */
+.quick-add-btn {
+    flex: 0 0 72px;
+    width: 72px;
+    padding: var(--space-xs) 0;
+    background: var(--accent-primary);
+    border: none;
+    border-radius: var(--border-radius);
+    color: var(--bg-primary);
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.quick-add-btn:hover:not(:disabled) {
+    opacity: 0.85;
+}
+
+.quick-add-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.quick-add-error {
+    margin-top: var(--space-xs);
+    font-size: 0.75rem;
+    color: var(--accent-danger);
+}
+
+.quick-add-hint {
+    margin-top: var(--space-xs);
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+/* Empty watchlist: muted hint line below the quick-add card */
+.watchlist-empty-text {
+    text-align: center;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    padding: var(--space-xl) 0;
+    letter-spacing: 0.03em;
+}
+
+/* Watchlist row entrance animation */
+@keyframes card-drop-in {
+    0% {
+        opacity: 0;
+        transform: scaleY(0);
+    }
+    65% {
+        transform: scaleY(1.04);
+    }
+    100% {
+        opacity: 1;
+        transform: scaleY(1);
+    }
+}
+
+.watchlist-row {
+    animation: card-drop-in 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    transform-origin: top center;
+}
