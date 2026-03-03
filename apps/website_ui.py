@@ -40,7 +40,7 @@ class Main_Website_Window(QMainWindow):
         self.db_card_visible = False
         
         # Window setup
-        self.setWindowTitle("Audio Transcription Website Server")
+        self.setWindowTitle("Option Website Server")
         
         # Load window position from settings (silently, before UI is ready)
         settings = gm.get_website_settings()
@@ -220,25 +220,27 @@ class Main_Website_Window(QMainWindow):
         form_layout.setFormAlignment(Qt.AlignVCenter | Qt.AlignLeft)
         form_layout.setSpacing(8)
         
-        # Create input fields
+        # Create input fields, pre-filling user/database from last successful login
+        saved_db = gm.get_website_settings().get('database', {})
+
         self.host_field = QLineEdit("localhost")
         self.host_field.setFont(QFont("Arial", 12))
-        
+
         self.port_field = QSpinBox()
         self.port_field.setFont(QFont("Arial", 12))
         self.port_field.setRange(1, 65535)
         self.port_field.setValue(3306)
-        
-        self.user_field = QLineEdit()
+
+        self.user_field = QLineEdit(saved_db.get('user', '') or '')
         self.user_field.setFont(QFont("Arial", 12))
-        
+
         self.password_field = QLineEdit()
         self.password_field.setFont(QFont("Arial", 12))
         self.password_field.setEchoMode(QLineEdit.Password)
         # Connect Enter key to trigger connect action
         self.password_field.returnPressed.connect(self.db_action_clicked)
-        
-        self.database_field = QLineEdit()
+
+        self.database_field = QLineEdit(saved_db.get('name', '') or '')
         self.database_field.setFont(QFont("Arial", 12))
         
         # Add fields to form in order: Host, Port, Database, Username, Password
@@ -391,10 +393,13 @@ class Main_Website_Window(QMainWindow):
                 conn.execute(text("SELECT 1"))
             
             self.db_manager._connected = True
-            
+
             logger.info(f"Successfully connected to database '{database}' at {host}:{port}")
             self.update_db_status()
-            
+
+            # Save last successful DB credentials to settings
+            gm.save_website_settings(db_user=user, db_name=database)
+
             # Save window position when connecting to database
             gm.save_website_settings(
                 x=self.pos().x(),

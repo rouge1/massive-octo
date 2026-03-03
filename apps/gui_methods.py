@@ -60,7 +60,7 @@ def convert_seconds_to_human_readable(seconds):
         return f"{days} day{'s' if days > 1 else ''}"
 
 
-def save_settings(x=None, y=None, width=None, height=None, headless=None, screenshot_viewer=None, domain_name=None, port=None, browser_x=None, browser_y=None, browser_width=None, browser_height=None, start_time=None):
+def save_settings(x=None, y=None, width=None, height=None, headless=None, screenshot_viewer=None, domain_name=None, port=None, browser_x=None, browser_y=None, browser_width=None, browser_height=None, start_time=None, db_user=None, db_name=None):
     """Save window and browser settings to config file (nested structure)
 
     Args:
@@ -107,6 +107,15 @@ def save_settings(x=None, y=None, width=None, height=None, headless=None, screen
             settings['system'] = {}
         settings['system']['start_time'] = start_time
 
+    # Update last successful database credentials
+    if db_user is not None or db_name is not None:
+        if 'database' not in settings:
+            settings['database'] = {}
+        if db_user is not None:
+            settings['database']['user'] = db_user
+        if db_name is not None:
+            settings['database']['name'] = db_name
+
     # Save updated settings
     try:
         with open(settings_file, 'w') as f:
@@ -142,6 +151,10 @@ def get_settings():
         },
         'system': {
             'start_time': None
+        },
+        'database': {
+            'user': None,
+            'name': None
         }
     }
     
@@ -306,7 +319,7 @@ def get_protocol():
     return 'https' if ssl_cert and ssl_key else 'http'
 
 
-def save_website_settings(x=None, y=None, width=None, height=None, intervals=None, default_interval=None, start_time=None):
+def save_website_settings(x=None, y=None, width=None, height=None, intervals=None, default_interval=None, start_time=None, db_user=None, db_name=None):
     """Save website window position and size to config file
     
     Args:
@@ -362,12 +375,21 @@ def save_website_settings(x=None, y=None, width=None, height=None, intervals=Non
     # Update start time if provided
     if start_time is not None:
         settings['start_time'] = start_time
-    
+
+    # Update last successful database credentials
+    if db_user is not None or db_name is not None:
+        if 'database' not in settings:
+            settings['database'] = {}
+        if db_user is not None:
+            settings['database']['user'] = db_user
+        if db_name is not None:
+            settings['database']['name'] = db_name
+
     # Save updated settings
     try:
         with open(settings_file, 'w') as f:
             json.dump(settings, f, indent=2)
-        
+
         # Log what was saved
         saved_items = []
         if any(v is not None for v in [x, y, width, height]):
@@ -409,6 +431,10 @@ def get_website_settings():
             'port': 8081,
             'ssl_cert': None,
             'ssl_key': None
+        },
+        'database': {
+            'user': None,
+            'name': None
         }
     }
     

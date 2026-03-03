@@ -615,7 +615,7 @@ function MetricsGrid({ data }) {
 }
 
 // Chart Component
-function Chart({ data }) {
+function Chart({ data, selectedDate }) {
     const chartRef = useRef(null);
     const { theme } = useTheme();
     const colors = chartColors[theme];
@@ -626,6 +626,11 @@ function Chart({ data }) {
         const timestamps = data.map(d => new Date(d.timestamp));
         const premiums = data.map(d => d.premium);
         const stockPrices = data.map(d => d.stock_price);
+
+        // Pin x-axis to market hours (9:00 AM – 4:00 PM) on the selected date
+        const dateForAxis = selectedDate || timestamps[timestamps.length - 1].toLocaleDateString('en-CA');
+        const xMin = new Date(`${dateForAxis}T09:00:00`);
+        const xMax = new Date(`${dateForAxis}T16:00:00`);
 
         const traces = [
             {
@@ -652,6 +657,8 @@ function Chart({ data }) {
 
         const layout = {
             xaxis: {
+                type: 'date',
+                range: [xMin, xMax],
                 showgrid: true,
                 gridcolor: colors.grid,
                 tickfont: { color: colors.text, size: 10 }
@@ -704,15 +711,39 @@ function Chart({ data }) {
 }
 
 // Data Table Toggle Header (separate component for header row layout)
-function DataTableToggleHeader({ isOpen, onToggle }) {
+function DataTableToggleHeader({ isOpen, onToggle, selectedDate, availableDates, onDateChange }) {
+    const hasDates = availableDates && availableDates.length > 0 && selectedDate;
+    const idx = hasDates ? availableDates.indexOf(selectedDate) : -1;
+    const isToday = selectedDate === new Date().toLocaleDateString('en-CA');
+
+    const fmt = (d) => {
+        const dt = new Date(d + 'T12:00:00');
+        return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+
     return (
-        <div className="data-table-toggle-header" onClick={onToggle}>
-            <span className="data-table-title">Raw Data</span>
-            <span className={`data-table-toggle ${isOpen ? 'open' : ''}`}>
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                    <path d="M2 4l4 4 4-4z"/>
-                </svg>
-            </span>
+        <div className="data-table-toggle-header">
+            {hasDates && (
+                <div className="date-nav-inline">
+                    <button className="date-nav-inline-btn"
+                        onClick={e => { e.stopPropagation(); onDateChange(availableDates[idx - 1]); }}
+                        disabled={idx <= 0}>←</button>
+                    <span className="date-nav-inline-label">
+                        {fmt(selectedDate)}{isToday ? ' · Today' : ''}
+                    </span>
+                    <button className="date-nav-inline-btn"
+                        onClick={e => { e.stopPropagation(); onDateChange(availableDates[idx + 1]); }}
+                        disabled={idx >= availableDates.length - 1}>→</button>
+                </div>
+            )}
+            <div className="date-nav-toggle-right" onClick={onToggle}>
+                <span className="data-table-title">Raw Data</span>
+                <span className={`data-table-toggle ${isOpen ? 'open' : ''}`}>
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                        <path d="M2 4l4 4 4-4z"/>
+                    </svg>
+                </span>
+            </div>
         </div>
     );
 }
@@ -921,6 +952,11 @@ function WatchlistRow({ item, onRemove }) {
     const [snapshot, setSnapshot] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [expanded, setExpanded] = useState(false);
+    const [historyData, setHistoryData] = useState([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [isDataTableOpen, setIsDataTableOpen] = useState(false);
+    const [selectedDate, setSelectedDate] = useState(null);
 
     // Fetch snapshot data for this option
     useEffect(() => {
@@ -958,51 +994,121 @@ function WatchlistRow({ item, onRemove }) {
 
     const dte = calculateDTE(item.expiration);
 
+    const handleRowClick = async () => {
+        if (expanded) { setExpanded(false); return; }
+        setExpanded(true);
+        if (historyData.length > 0) return; // already loaded
+        setHistoryLoading(true);
+        try {
+            const res = await fetch(`${API_BASE}/api/snapshots/${item.id}?limit=5000`);
+            const raw = await res.json();
+            // Map MySQL fields → Chart/DataTable shape, reverse to oldest-first
+            const mapped = raw.map(s => ({
+                timestamp: s.timestamp,
+                premium: s.mid,
+                stock_price: s.stock_price,
+                spread_pct: s.spread_pct,
+                option_data: {
+                    bid: s.bid, ask: s.ask, mid: s.mid,
+                    last: s.last_price, volume: s.volume,
+                    open_interest: s.open_interest, iv: s.implied_volatility,
+                }
+            })).reverse();
+            setHistoryData(mapped);
+            // Default to today if data exists for today, else most recent date
+            const today = new Date().toLocaleDateString('en-CA');
+            const dates = [...new Set(mapped.map(d => d.timestamp.slice(0, 10)))].sort();
+            setSelectedDate(dates.includes(today) ? today : dates[dates.length - 1]);
+        } finally {
+            setHistoryLoading(false);
+        }
+    };
+
     const handleRemove = (e) => {
         e.stopPropagation();
-        if (confirm(`Remove ${item.ticker} $${item.strike.toFixed(2)} ${item.put_call.toUpperCase()} from watchlist?`)) {
+        if (confirm(`Remove ${item.ticker} $${item.strike != null ? Number(item.strike).toFixed(2) : '?'} ${item.put_call.toUpperCase()} from watchlist?`)) {
             onRemove(item.id);
         }
     };
 
+    // Derived: available dates and filtered data for the selected day (9am-4pm)
+    const availableDates = [...new Set(historyData.map(d => d.timestamp.slice(0, 10)))].sort();
+    const filteredData = selectedDate
+        ? historyData.filter(d => {
+            if (!d.timestamp.startsWith(selectedDate)) return false;
+            const t = new Date(d.timestamp);
+            const mins = t.getHours() * 60 + t.getMinutes();
+            return mins >= 9 * 60 && mins < 16 * 60;
+        })
+        : [];
+
     return (
-        <tr className="watchlist-row">
-            <td className="cell-ticker">{item.ticker}</td>
-            <td className="cell-strike">${item.strike.toFixed(2)}</td>
-            <td className="cell-type">
-                <span className={`type-badge type-${item.put_call}`}>
-                    {item.put_call.toUpperCase()}
-                </span>
-            </td>
-            <td className="cell-expiration">{item.expiration}</td>
-            <td className="cell-dte">{dte}</td>
-            <td className="cell-price">
-                {loading ? (
-                    <div className="spinner-small"></div>
-                ) : error ? (
-                    <span className="price-error">—</span>
-                ) : snapshot ? (
-                    snapshot.option_data.last !== null
-                        ? `$${snapshot.option_data.last.toFixed(2)}`
-                        : '—'
-                ) : '—'}
-            </td>
-            <td className="cell-price">
-                {loading ? '' : error ? '—' : snapshot ? `$${snapshot.option_data.bid.toFixed(2)}` : '—'}
-            </td>
-            <td className="cell-price">
-                {loading ? '' : error ? '—' : snapshot ? `$${snapshot.option_data.ask.toFixed(2)}` : '—'}
-            </td>
-            <td className="cell-remove">
-                <button
-                    className="remove-btn"
-                    onClick={handleRemove}
-                    title="Remove from watchlist"
-                >
-                    ✕
-                </button>
-            </td>
-        </tr>
+        <>
+            <tr className={`watchlist-row${expanded ? ' expanded' : ''}`} onClick={handleRowClick}>
+                <td className="cell-ticker">{item.ticker}</td>
+                <td className="cell-strike">${item.strike != null ? Number(item.strike).toFixed(2) : '—'}</td>
+                <td className="cell-type">
+                    <span className={`type-badge type-${item.put_call}`}>
+                        {item.put_call.toUpperCase()}
+                    </span>
+                </td>
+                <td className="cell-expiration">{item.expiration}</td>
+                <td className="cell-dte">{dte}</td>
+                <td className="cell-price">
+                    {loading ? (
+                        <div className="spinner-small"></div>
+                    ) : error ? (
+                        <span className="price-error">—</span>
+                    ) : snapshot ? (
+                        snapshot.option_data.last !== null
+                            ? `$${snapshot.option_data.last.toFixed(2)}`
+                            : '—'
+                    ) : '—'}
+                </td>
+                <td className="cell-price">
+                    {loading ? '' : error ? '—' : snapshot ? (snapshot.option_data.bid !== null && snapshot.option_data.bid !== undefined ? `$${snapshot.option_data.bid.toFixed(2)}` : '—') : '—'}
+                </td>
+                <td className="cell-price">
+                    {loading ? '' : error ? '—' : snapshot ? (snapshot.option_data.ask !== null && snapshot.option_data.ask !== undefined ? `$${snapshot.option_data.ask.toFixed(2)}` : '—') : '—'}
+                </td>
+                <td className="cell-remove">
+                    <button
+                        className="remove-btn"
+                        onClick={handleRemove}
+                        title="Remove from watchlist"
+                    >
+                        ✕
+                    </button>
+                </td>
+            </tr>
+            {expanded && (
+                <tr className="watchlist-row-detail">
+                    <td colSpan={9}>
+                        <div className="row-history-panel">
+                            {historyLoading ? (
+                                <div className="spinner"></div>
+                            ) : historyData.length === 0 ? (
+                                <div className="empty-state-text">No history yet.</div>
+                            ) : (
+                                <>
+                                    <Chart data={filteredData} selectedDate={selectedDate} />
+                                    <div className="chart-footer-row">
+                                        <DataTableToggleHeader
+                                            isOpen={isDataTableOpen}
+                                            onToggle={() => setIsDataTableOpen(o => !o)}
+                                            selectedDate={selectedDate}
+                                            availableDates={availableDates}
+                                            onDateChange={setSelectedDate}
+                                        />
+                                    </div>
+                                    <DataTable data={filteredData} isOpen={isDataTableOpen} />
+                                </>
+                            )}
+                        </div>
+                    </td>
+                </tr>
+            )}
+        </>
     );
 }
 

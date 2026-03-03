@@ -919,6 +919,48 @@ body {
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
+}
+
+.date-nav-inline {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.date-nav-inline-btn {
+    padding: 2px 8px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.date-nav-inline-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    border-color: var(--accent-primary);
+}
+
+.date-nav-inline-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.date-nav-inline-label {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    min-width: 120px;
+    text-align: center;
+}
+
+.date-nav-toggle-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
     cursor: pointer;
 }
 
@@ -1530,6 +1572,22 @@ body {
     color: var(--text-muted);
     padding: var(--space-xl) 0;
     letter-spacing: 0.03em;
+}
+
+/* Watchlist row expanded state */
+.watchlist-row.expanded {
+    background: var(--bg-hover);
+}
+
+.watchlist-row-detail td {
+    padding: 0;
+    border-top: none;
+}
+
+.row-history-panel {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-card);
 }
 
 /* Watchlist row entrance animation */

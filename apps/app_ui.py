@@ -187,17 +187,18 @@ class Main_App_Window(QMainWindow):
         
         # Create input fields with current values if available
         current = db_credentials or {}
-        
+        saved_db = gm.get_settings().get('database', {})
+
         self.host_field = QLineEdit(current.get('host', 'localhost'))
         self.host_field.setFont(QFont("Arial", 12))
         self.port_field = QSpinBox()
         self.port_field.setRange(1, 65535)
         self.port_field.setValue(current.get('port', 3306))
         self.port_field.setFont(QFont("Arial", 12))
-        
-        self.database_field = QLineEdit(current.get('database', ''))
+
+        self.database_field = QLineEdit(current.get('database', '') or saved_db.get('name', '') or '')
         self.database_field.setFont(QFont("Arial", 12))
-        self.username_field = QLineEdit(current.get('user', ''))
+        self.username_field = QLineEdit(current.get('user', '') or saved_db.get('user', '') or '')
         self.username_field.setFont(QFont("Arial", 12))
         self.password_field = QLineEdit(current.get('password', ''))
         self.password_field.setEchoMode(QLineEdit.Password)
@@ -539,7 +540,10 @@ class Main_App_Window(QMainWindow):
             
             self.db_manager._connected = True
             logger.info(f"✓ Database connection established successfully (db_manager: {id(self.db_manager)})")
-            
+
+            # Save last successful DB credentials to settings
+            gm.save_settings(db_user=credentials['user'], db_name=credentials['database'])
+
             # Save window position when connecting to database
             self.save_window_position()
             

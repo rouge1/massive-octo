@@ -90,26 +90,20 @@ alerts
 ### Quick Start (Recommended)
 ```bash
 conda activate mass
-cd /data/python/massive
-./mass.sh start      # Start both backend and frontend
+cd /data/python/massive-octo
+./mass.sh start      # Start both PyQt5 apps (watcher + website server)
 ./mass.sh status     # Check if services are running
 ./mass.sh stop       # Stop both services
 ```
 
-Then open http://localhost:3000 in your browser.
+Then open the URL shown in the website.py window (default http://localhost:8081).
 
 ### Manual Start
-**Backend (FastAPI):**
 ```bash
 conda activate mass
-cd /data/python/massive/backend
-uvicorn main:app --reload --port 8000
-```
-
-**Frontend (React via CDN):**
-```bash
-cd /data/python/massive/frontend
-python -m http.server 3000
+cd /data/python/massive-octo
+python options_watcher.py   # Data collector (must run first)
+python website.py           # Web server control panel
 ```
 
 ### First-Time Setup
@@ -135,50 +129,17 @@ conda install -c conda-forge fastapi uvicorn websockets yfinance pytz
 - `GET /api/contracts/{ticker}/{strike}/{put_call}` - Get available expirations
 - `GET /api/price/{ticker}` - Get current stock price
 - `GET /api/market/status` - Check if market is open/closed
-- `POST /api/data/save` - Save a snapshot to date-specific persistent storage
-- `GET /api/data/load/{ticker}/{strike}/{put_call}?date=YYYY-MM-DD` - Load saved snapshots (defaults to today)
-- `GET /api/data/dates/{ticker}/{strike}/{put_call}` - Get list of available dates (newest first)
-- `DELETE /api/data/clear/{ticker}/{strike}/{put_call}?date=YYYY-MM-DD` - Clear saved data (specific date or all)
 - `GET /api/watchlist` - Get all watchlist items
 - `POST /api/watchlist` - Add an item to the watchlist
 - `DELETE /api/watchlist/{item_id}` - Remove an item from the watchlist
-- `GET /api/watchlist/{item_id}/snapshot` - Get current snapshot for a watchlist item
+- `GET /api/watchlist/{item_id}/snapshot` - Get current live snapshot for a watchlist item
+- `GET /api/snapshots/{watchlist_id}?limit=N` - Get full snapshot history for a watchlist item (default limit 1000; use 5000 for full history)
+- `GET /api/snapshots/{watchlist_id}/latest` - Get the single most recent snapshot
 - `GET /docs` - OpenAPI documentation
 
-### WebSocket Endpoint
-- `WS /ws/track` - Real-time streaming
-
-**Client sends:**
-```json
-{
-    "action": "start",
-    "ticker": "AAPL",
-    "contract": "AAPL240315C00200000",
-    "expiration": "2024-03-15",
-    "strike": 200.0,
-    "put_call": "call"
-}
-```
-
-**Server pushes every 30s:**
-```json
-{
-    "type": "snapshot",
-    "timestamp": "2024-01-15T10:30:00",
-    "premium": 5.25,
-    "stock_price": 185.50,
-    "spread_pct": 2.83,
-    "option_data": {
-        "bid": 5.20,
-        "ask": 5.30,
-        "mid": 5.25,
-        "last": 5.22,
-        "volume": 1500,
-        "open_interest": 12000,
-        "iv": 0.25
-    }
-}
-```
+### SSE Endpoints
+- `GET /sse/watchlist` - Server-sent events stream: pushes watchlist-level updates
+- `GET /sse/option/{watchlist_id}` - Server-sent events stream: pushes per-option snapshots every 30s (open) / 5min (closed)
 
 ## Themes
 
@@ -207,6 +168,8 @@ Single horizontal row: `[ TICKER ] [ CALL | PUT ] [ Strike ▾ ] [ DTE ▾ ] [ +
 - **Auto-refresh**: each row re-fetches live snapshot every 60 seconds
 - **Sortable**: click column headers (Ticker, Strike, Type, Expiration, DTE)
 - **Remove**: click ✕ button on any row
+- **Expandable rows**: click any row to expand an inline panel showing a Plotly chart + raw data table loaded from `GET /api/snapshots/{id}?limit=5000`. Click again to collapse.
+- **Date navigation**: the Raw Data header has ←/→ buttons to step through available days; chart x-axis auto-pins to 9 AM–4 PM for the selected date
 
 ### Watchlist Storage
 - Stored in `/data/watchlist.json`
@@ -235,11 +198,14 @@ Single horizontal row: `[ TICKER ] [ CALL | PUT ] [ Strike ▾ ] [ DTE ▾ ] [ +
 ## Key Features
 - **Watchlist-only UI** — single view, no tab switching
 - **QuickAddCard** — inline progressive-disclosure form: ticker → strike → DTE → Add
+- **Expandable rows** — click any watchlist row to reveal inline Plotly chart + raw data table
+- **Date navigation** — ←/→ step through historical days per row; chart x-axis pinned to market hours
 - Market status indicator (open/pre-market/after-hours/weekend) in header
 - Sortable watchlist table with live bid/ask/last per row
 - Row entrance animation (spring cubic-bezier, fires only on mount)
 - Theme switcher in header (4 themes, persisted in localStorage)
-- Watchlist persistence (stored in `/data/watchlist.json`, survives restart)
+- Watchlist persistence (MySQL via SQLAlchemy ORM, survives restart)
+- DB credential pre-fill — both PyQt5 GUIs remember last successful user/database on reopen
 
 ## Implementation Status
 - [x] FastAPI backend with REST endpoints
@@ -250,14 +216,18 @@ Single horizontal row: `[ TICKER ] [ CALL | PUT ] [ Strike ▾ ] [ DTE ▾ ] [ +
 - [x] Watchlist CRUD endpoints
 - [x] QuickAddCard inline add flow (progressive disclosure)
 - [x] Row entrance animation (spring cubic-bezier)
-- [x] Watchlist persistence (JSON file)
+- [x] Watchlist persistence (MySQL)
+- [x] Expandable watchlist rows with inline chart + data table
+- [x] Date navigation (←/→) with market-hours-pinned chart x-axis
+- [x] DB credential pre-fill from last successful login
+- [ ] Schwab API integration (plan in `mossy-pondering-toast.md`)
 - [ ] Browser notifications for spread alerts
 - [ ] CSV export
 
 ## Common Pitfalls & Solutions
 
 ### yfinance + JSON Serialization
-yfinance returns numpy types (`int64`, `float64`) that aren't JSON serializable. Always convert before sending over WebSocket:
+yfinance returns numpy types (`int64`, `float64`) that aren't JSON serializable. Always convert before sending over SSE/REST:
 ```python
 def to_native(val):
     if val is None:
@@ -413,7 +383,7 @@ python migrate_data.py
 ```
 This groups snapshots by date, creates new date-specific files, and renames legacy files to `.json.bak`.
 
-### WebSocket Polling Rate Based on Market Status
+### SSE Polling Rate Based on Market Status
 Adjust polling intervals based on market hours to reduce unnecessary API calls:
 ```python
 if not market_status["is_open"]:
@@ -514,6 +484,56 @@ atexit.register(cleanup_logger_handlers)
 app.aboutToQuit.connect(cleanup_logger_handlers)
 ```
 And set `signal_handler.flushOnClose = False` to prevent a double-close crash.
+
+### DB Credential Pre-Fill from Settings
+Both `app_ui.py` (watcher) and `website_ui.py` (server) save `db_user` and `db_name` to their respective settings JSON on every successful connection:
+```python
+gm.save_settings(db_user=credentials['user'], db_name=credentials['database'])
+# or for website:
+gm.save_website_settings(db_user=user, db_name=database)
+```
+On next open, fields are pre-filled:
+```python
+saved_db = gm.get_settings().get('database', {})
+self.username_field = QLineEdit(current.get('user', '') or saved_db.get('user', '') or '')
+self.database_field = QLineEdit(current.get('database', '') or saved_db.get('name', '') or '')
+```
+Password is intentionally **not** saved — user must re-enter it each session.
+
+### Chart X-Axis Pinned to Market Hours
+The `Chart` component accepts a `selectedDate` prop and always pins the x-axis to 9:00 AM–4:00 PM on that date, regardless of when actual data points fall:
+```javascript
+const dateForAxis = selectedDate || timestamps[timestamps.length - 1].toLocaleDateString('en-CA');
+const xMin = new Date(`${dateForAxis}T09:00:00`);
+const xMax = new Date(`${dateForAxis}T16:00:00`);
+// passed to layout.xaxis: { type: 'date', range: [xMin, xMax] }
+```
+This ensures consistent visual comparison across days. Without this, the axis collapses to just the range of available data points, making sparse days look misleading.
+
+### Date Navigation Buttons Inside a Clickable Row — Event Propagation
+When date nav ←/→ buttons live inside a `<tr onClick={handleRowClick}>`, clicking them would fire both the button handler **and** the row expand/collapse. Always call `e.stopPropagation()`:
+```javascript
+<button onClick={e => { e.stopPropagation(); onDateChange(availableDates[idx - 1]); }}>←</button>
+```
+The Raw Data toggle header uses the same pattern — only the right-hand "Raw Data ▾" portion triggers `onToggle`; the date nav area uses `stopPropagation` so it never toggles the panel.
+
+### Snapshot History Field Mapping
+`GET /api/snapshots/{watchlist_id}` returns MySQL field names. The frontend must map them to the shape that `Chart` and `DataTable` expect:
+```javascript
+const mapped = raw.map(s => ({
+    timestamp: s.timestamp,
+    premium: s.mid,          // mid is the "premium" displayed
+    stock_price: s.stock_price,
+    spread_pct: s.spread_pct,
+    option_data: {
+        bid: s.bid, ask: s.ask, mid: s.mid,
+        last: s.last_price,              // DB column: last_price → UI: last
+        volume: s.volume,
+        open_interest: s.open_interest,
+        iv: s.implied_volatility,        // DB column: implied_volatility → UI: iv
+    }
+})).reverse();  // DB returns newest-first; Chart expects oldest-first
+```
 
 ### `contract_symbol` Is the Canonical Option ID
 Throughout the codebase, `contract_symbol` (e.g. `"AAPL260417C00165000"`) is the unique identifier for an options contract. The field name `ticker` on a contract object refers to something different. Any code that uses `c.ticker` when it means the contract symbol will silently get `undefined`/`None` and break downstream logic (dropdown population, POST bodies, DB writes).
