@@ -997,7 +997,6 @@ function WatchlistRow({ item, onRemove }) {
     const handleRowClick = async () => {
         if (expanded) { setExpanded(false); return; }
         setExpanded(true);
-        if (historyData.length > 0) return; // already loaded
         setHistoryLoading(true);
         try {
             const res = await fetch(`${API_BASE}/api/snapshots/${item.id}?limit=5000`);

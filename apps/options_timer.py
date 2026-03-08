@@ -104,7 +104,14 @@ class OptionsTimer:
                     
                     # Check market status
                     market_status = options_api.is_market_open()
-                    
+
+                    if not market_status['is_open']:
+                        secs_to_open = options_api.seconds_until_market_open()
+                        sleep_secs = min(self.poll_interval_market_closed, secs_to_open) if secs_to_open > 0 else self.poll_interval_market_closed
+                        logger.debug(f"Market closed ({market_status['status']}) - sleeping {sleep_secs:.0f}s (open in {secs_to_open:.0f}s)")
+                        await asyncio.sleep(sleep_secs)
+                        continue
+
                     # Fetch and store snapshots for each item
                     success_count = 0
                     error_count = 0

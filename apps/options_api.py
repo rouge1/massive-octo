@@ -12,7 +12,7 @@ Based on backend/api_client.py but adapted for desktop app use.
 """
 
 import logging
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 from typing import Optional
 
 import yfinance as yf
@@ -254,6 +254,29 @@ def is_market_open() -> dict:
         "status": status,
         "day_of_week": now_et.strftime("%A")
     }
+
+
+def seconds_until_market_open() -> float:
+    """
+    Return seconds until the next regular market open (9:30 AM ET, weekdays only).
+    Returns 0 if the market is currently open.
+    """
+    et_tz = pytz.timezone('US/Eastern')
+    now_et = datetime.now(et_tz)
+
+    # Start from today's 9:30 AM ET
+    candidate = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+
+    # If we're at or past 9:30 today, aim for tomorrow
+    if now_et.time() >= time(9, 30):
+        candidate += timedelta(days=1)
+
+    # Skip weekends (Saturday=5, Sunday=6)
+    while candidate.weekday() >= 5:
+        candidate += timedelta(days=1)
+
+    delta = (candidate - now_et).total_seconds()
+    return max(0.0, delta)
 
 
 def calculate_dte(expiration: str) -> int:
