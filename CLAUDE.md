@@ -34,6 +34,7 @@ Both must be running for the full live experience. The watcher writes; the serve
 │   ├── app_ui.py            # PyQt5 GUI for options_watcher.py
 │   ├── website_ui.py        # PyQt5 GUI for website.py
 │   ├── gui_methods.py       # Shared GUI utilities, settings helpers, SignalHandler
+│   ├── schwab_client.py     # Schwab API wrapper: init, get_status, complete_auth, reset
 │   ├── theme.py             # apply_dark_theme() for PyQt5 windows
 │   └── audio*.py            # Audio subsystem (separate concern)
 ├── frontend/
@@ -220,9 +221,45 @@ Single horizontal row: `[ TICKER ] [ CALL | PUT ] [ Strike ▾ ] [ DTE ▾ ] [ +
 - [x] Expandable watchlist rows with inline chart + data table
 - [x] Date navigation (←/→) with market-hours-pinned chart x-axis
 - [x] DB credential pre-fill from last successful login
-- [ ] Schwab API integration (plan in `mossy-pondering-toast.md`)
+- [x] Schwab API card — multi-state Save/Authorize/Delete flow with GNOME Keyring storage
 - [ ] Browser notifications for spread alerts
 - [ ] CSV export
+
+## Schwab API Card
+
+Schwab credentials are stored in GNOME Keyring under service `options-tracker-schwab`.
+
+### Key functions
+- `gm.save_schwab_credentials(client_id, client_secret)` — saves to keyring
+- `gm.get_schwab_credentials()` — returns `{client_id, client_secret}`
+- `gm.delete_schwab_credentials()` — removes all three keys (client_id, client_secret, oauth_token)
+- `schwab_client.init(client_id, client_secret)` — loads token from keyring, sets `_client`
+- `schwab_client.get_status()` → `not_configured | token_missing | token_expired | authorized`
+- `schwab_client.get_auth_url(client_id)` — returns OAuth URL to open in browser
+- `schwab_client.complete_auth(client_id, client_secret, received_url)` — exchanges code, saves token
+- `schwab_client.reset()` — clears in-memory client (call after `delete_schwab_credentials`)
+
+### Action button state machine
+| `get_status()`  | Button   | Color  | Enabled |
+|-----------------|----------|--------|---------|
+| not_configured  | Save     | Green  | Yes     |
+| token_missing   | Authorize| Blue   | Yes     |
+| token_expired   | Authorize| Blue   | Yes     |
+| authorized      | Authorize| Gray   | No      |
+
+Delete button is enabled whenever status != `not_configured`.
+
+### Inspecting keyring from CLI
+```bash
+# Check which keys are set
+conda run -n mass python -c "import keyring; [print(f'{k}: {\"SET\" if keyring.get_password(\"options-tracker-schwab\", k) else \"NOT SET\"}') for k in ('client_id','client_secret','oauth_token')]"
+
+# Read a value directly
+secret-tool lookup service options-tracker-schwab username client_id
+```
+
+### GNOME Keyring security model
+`secret-tool` and any process running as your user can read secrets without re-prompting — this is by design. The keyring unlocks automatically with your desktop login session. Protection is at the OS user level (other users cannot read it). Credentials are never written to disk as plaintext, which is the main win over config files that might be accidentally committed to git.
 
 ## Common Pitfalls & Solutions
 
@@ -246,6 +283,20 @@ Browser `<option>` elements ignore parent CSS. Must explicitly style:
     color: var(--text-primary);
 }
 ```
+
+### QLineEdit Password Echo Mode Reveals Credential Length
+`QLineEdit.Password` shows one dot per character — if you load the actual credential value, the dot count reveals the credential length. To avoid this, either load a fixed-length placeholder string instead of the real value, or accept the leakage (it's a local desktop app). If using a placeholder, detect it on save and read the real value from keyring:
+```python
+MASK = "x" * 8
+self.field = QLineEdit(MASK if stored_value else '')
+self.field.setEchoMode(QLineEdit.Password)
+
+# On save:
+val = self.field.text().strip()
+if val == MASK:
+    val = keyring.get_password(SERVICE, KEY)  # use stored value unchanged
+```
+Auth URL field should also use `QLineEdit.Password` so all three credential fields look consistent (all dots, no plaintext callback URL visible).
 
 ### Plotly Chart Theming
 Plotly tooltips need explicit `hoverlabel` config per theme:

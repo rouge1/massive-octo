@@ -18,6 +18,8 @@ from typing import Optional
 import yfinance as yf
 import pytz
 
+from apps import schwab_client
+
 # Configure logger
 logger = logging.getLogger(__name__)
 if not logger.handlers:
@@ -28,7 +30,60 @@ if not logger.handlers:
     logger.setLevel(logging.INFO)
 
 
+# ---------------------------------------------------------------------------
+# Public API — Schwab-first with yfinance fallback
+# ---------------------------------------------------------------------------
+
 def list_available_strikes(ticker: str, put_call: str) -> list[float]:
+    if schwab_client.is_available():
+        try:
+            return schwab_client.list_available_strikes(ticker, put_call)
+        except Exception as e:
+            logger.warning(f"Schwab failed, falling back to yfinance: {e}")
+    return _yf_list_available_strikes(ticker, put_call)
+
+
+def list_available_contracts(ticker: str, strike: float, put_call: str) -> list[dict]:
+    if schwab_client.is_available():
+        try:
+            return schwab_client.list_available_contracts(ticker, strike, put_call)
+        except Exception as e:
+            logger.warning(f"Schwab failed, falling back to yfinance: {e}")
+    return _yf_list_available_contracts(ticker, strike, put_call)
+
+
+def get_stock_price(ticker: str) -> Optional[float]:
+    if schwab_client.is_available():
+        try:
+            return schwab_client.get_stock_price(ticker)
+        except Exception as e:
+            logger.warning(f"Schwab failed, falling back to yfinance: {e}")
+    return _yf_get_stock_price(ticker)
+
+
+def get_option_data(ticker: str, expiration: str, strike: float, put_call: str) -> Optional[dict]:
+    if schwab_client.is_available():
+        try:
+            return schwab_client.get_option_data(ticker, expiration, strike, put_call)
+        except Exception as e:
+            logger.warning(f"Schwab failed, falling back to yfinance: {e}")
+    return _yf_get_option_data(ticker, expiration, strike, put_call)
+
+
+def fetch_snapshot(ticker: str, expiration: str, strike: float, put_call: str) -> Optional[dict]:
+    if schwab_client.is_available():
+        try:
+            return schwab_client.fetch_snapshot(ticker, expiration, strike, put_call)
+        except Exception as e:
+            logger.warning(f"Schwab failed, falling back to yfinance: {e}")
+    return _yf_fetch_snapshot(ticker, expiration, strike, put_call)
+
+
+# ---------------------------------------------------------------------------
+# yfinance implementations (internal)
+# ---------------------------------------------------------------------------
+
+def _yf_list_available_strikes(ticker: str, put_call: str) -> list[float]:
     """
     List all available strike prices for a ticker and option type.
     
@@ -65,7 +120,7 @@ def list_available_strikes(ticker: str, put_call: str) -> list[float]:
         raise
 
 
-def list_available_contracts(ticker: str, strike: float, put_call: str) -> list[dict]:
+def _yf_list_available_contracts(ticker: str, strike: float, put_call: str) -> list[dict]:
     """
     List all available contracts for given ticker, strike, and type.
     
@@ -115,7 +170,7 @@ def list_available_contracts(ticker: str, strike: float, put_call: str) -> list[
         raise
 
 
-def get_stock_price(ticker: str) -> Optional[float]:
+def _yf_get_stock_price(ticker: str) -> Optional[float]:
     """
     Get the current stock price.
     
@@ -134,7 +189,7 @@ def get_stock_price(ticker: str) -> Optional[float]:
         return None
 
 
-def get_option_data(ticker: str, expiration: str, strike: float, put_call: str) -> Optional[dict]:
+def _yf_get_option_data(ticker: str, expiration: str, strike: float, put_call: str) -> Optional[dict]:
     """
     Get current option data including bid, ask, and mid price.
     
@@ -174,28 +229,28 @@ def get_option_data(ticker: str, expiration: str, strike: float, put_call: str) 
         return None
 
 
-def fetch_snapshot(ticker: str, expiration: str, strike: float, put_call: str) -> Optional[dict]:
+def _yf_fetch_snapshot(ticker: str, expiration: str, strike: float, put_call: str) -> Optional[dict]:
     """
     Fetch a complete snapshot of option and stock data.
-    
+
     Args:
         ticker: Stock ticker symbol
         expiration: Expiration date string (YYYY-MM-DD)
         strike: Strike price
         put_call: 'call' or 'put'
-    
+
     Returns:
         Dict with timestamp, stock_price, and all option data
         or None on error
     """
     try:
         timestamp = datetime.now()
-        
-        option_data = get_option_data(ticker, expiration, strike, put_call)
+
+        option_data = _yf_get_option_data(ticker, expiration, strike, put_call)
         if option_data is None:
             return None
-        
-        stock_price = get_stock_price(ticker)
+
+        stock_price = _yf_get_stock_price(ticker)
         if stock_price is None:
             return None
         

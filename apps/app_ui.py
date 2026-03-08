@@ -2,6 +2,7 @@ import logging
 import sys
 import os
 import json
+import webbrowser
 from datetime import datetime
 from PIL import Image, ImageEnhance
 import io
@@ -12,10 +13,11 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QTextEdit, QStatusBar, QPushButton,
                              QGroupBox, QApplication, QDialog, QFormLayout,
                              QLineEdit, QSpinBox, QMessageBox, QCheckBox, QFileDialog,
-                             QComboBox, QGraphicsOpacityEffect)
+                             QComboBox, QGraphicsOpacityEffect, QInputDialog)
 
 from apps.theme import apply_dark_theme
 from apps import gui_methods as gm
+from apps import schwab_client
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -127,7 +129,11 @@ class Main_App_Window(QMainWindow):
         # Create database connection card
         self.db_card_visible = False
         self.create_database_card(main_layout)
-        
+
+        # Create Schwab API card
+        self.create_schwab_card(main_layout)
+
+
         # Load window position and size from settings
         self.load_window_position()
         
@@ -256,6 +262,239 @@ class Main_App_Window(QMainWindow):
         parent_layout.addWidget(self.db_card)
 
 
+
+    # ============================================================================
+    # SCHWAB CARD UI
+    # ============================================================================
+
+    def create_schwab_card(self, parent_layout):
+        """Create the Schwab API card below the database card."""
+        self.schwab_card = QGroupBox("Schwab API")
+        self.schwab_card.setFont(QFont("Arial", 14))
+        schwab_layout = QVBoxLayout(self.schwab_card)
+        schwab_layout.setContentsMargins(15, 15, 15, 15)
+
+        form_layout = QFormLayout()
+        form_layout.setLabelAlignment(Qt.AlignVCenter | Qt.AlignRight)
+        form_layout.setFormAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        form_layout.setSpacing(8)
+
+        # Load saved credentials
+        creds = gm.get_schwab_credentials()
+
+        self.schwab_id_field = QLineEdit(creds.get('client_id') or '')
+        self.schwab_id_field.setFont(QFont("Arial", 12))
+        self.schwab_id_field.setEchoMode(QLineEdit.Password)
+        self.schwab_id_field.setPlaceholderText("Put your Charles Schwab App Key here")
+
+        self.schwab_secret_field = QLineEdit(creds.get('client_secret') or '')
+        self.schwab_secret_field.setFont(QFont("Arial", 12))
+        self.schwab_secret_field.setEchoMode(QLineEdit.Password)
+        self.schwab_secret_field.setPlaceholderText("Put your Charles Schwab Secret here")
+
+        self.schwab_auth_url_field = QLineEdit()
+        self.schwab_auth_url_field.setFont(QFont("Arial", 12))
+        self.schwab_auth_url_field.setEchoMode(QLineEdit.Password)
+        self.schwab_auth_url_field.setPlaceholderText("Put your redirected Charles Schwab URL here (i.e. https://127.0.0.1:9090/callback?code=...)")
+
+        id_label = QLabel("Client ID:")
+        id_label.setFont(QFont("Arial", 12))
+        id_label.setStyleSheet("QLabel { background-color: transparent; margin-top: -8px; }")
+        form_layout.addRow(id_label, self.schwab_id_field)
+
+        secret_label = QLabel("Client Secret:")
+        secret_label.setFont(QFont("Arial", 12))
+        secret_label.setStyleSheet("QLabel { background-color: transparent; margin-top: -8px; }")
+        form_layout.addRow(secret_label, self.schwab_secret_field)
+
+        auth_url_label = QLabel("Auth URL:")
+        auth_url_label.setFont(QFont("Arial", 12))
+        auth_url_label.setStyleSheet("QLabel { background-color: transparent; margin-top: -8px; }")
+        form_layout.addRow(auth_url_label, self.schwab_auth_url_field)
+
+        schwab_layout.addLayout(form_layout)
+
+        # Status row
+        status_row = QHBoxLayout()
+        self.schwab_orb = QLabel()
+        self.schwab_orb.setFixedSize(12, 12)
+        self.schwab_orb.setStyleSheet("QLabel { border-radius: 6px; background-color: #888888; }")
+        self.schwab_status_label = QLabel("Not configured")
+        self.schwab_status_label.setFont(QFont("Arial", 11))
+        self.schwab_status_label.setStyleSheet("QLabel { background-color: transparent; }")
+        status_row.addWidget(self.schwab_orb)
+        status_row.addWidget(self.schwab_status_label)
+        status_row.addStretch()
+
+        # Info button — tucked into the action row
+        info_btn = QPushButton("ⓘ")
+        info_btn.setFont(QFont("Arial", 13))
+        info_btn.setFlat(True)
+        info_btn.setFixedSize(24, 28)
+        info_btn.setToolTip("How Schwab credentials work")
+        info_btn.setStyleSheet("QPushButton { color: #2196F3; background: transparent; border: none; }")
+        info_btn.clicked.connect(self.schwab_info_clicked)
+        status_row.addWidget(info_btn)
+
+        # Single multi-state action button
+        self.schwab_action_btn = QPushButton("Save")
+        self.schwab_action_btn.setFont(QFont("Arial", 12))
+        self.schwab_action_btn.setMinimumWidth(100)
+        self.schwab_action_btn.clicked.connect(self.schwab_action_clicked)
+
+        # Delete button (red)
+        self.schwab_delete_btn = QPushButton("Delete")
+        self.schwab_delete_btn.setFont(QFont("Arial", 12))
+        self.schwab_delete_btn.setMinimumWidth(80)
+        self.schwab_delete_btn.setStyleSheet("QPushButton { background-color: #F44336; color: white; }")
+        self.schwab_delete_btn.clicked.connect(self.schwab_delete_clicked)
+
+        status_row.addWidget(self.schwab_action_btn)
+        status_row.addWidget(self.schwab_delete_btn)
+
+        schwab_layout.addLayout(status_row)
+
+        self.schwab_card.setMaximumHeight(0)
+        self.schwab_card.hide()
+        parent_layout.addWidget(self.schwab_card)
+
+        # Reflect current status
+        self.update_schwab_status()
+
+    def update_schwab_status(self):
+        """Update the Schwab status orb, label, and buttons based on client state."""
+        status = schwab_client.get_status()
+
+        # Orb + label
+        if status == "authorized":
+            self.schwab_orb.setStyleSheet("QLabel { border-radius: 6px; background-color: #4CAF50; }")
+            self.schwab_status_label.setText("Authorized")
+        elif status == "token_expired":
+            self.schwab_orb.setStyleSheet("QLabel { border-radius: 6px; background-color: #FF9800; }")
+            self.schwab_status_label.setText("Token expired — click Authorize")
+        elif status == "token_missing":
+            self.schwab_orb.setStyleSheet("QLabel { border-radius: 6px; background-color: #FF9800; }")
+            self.schwab_status_label.setText("Credentials saved — click Authorize")
+        else:
+            self.schwab_orb.setStyleSheet("QLabel { border-radius: 6px; background-color: #888888; }")
+            self.schwab_status_label.setText("Not configured")
+
+        # Action button state
+        if status == "authorized":
+            self.schwab_action_btn.setText("Authorize")
+            self.schwab_action_btn.setEnabled(False)
+            self.schwab_action_btn.setStyleSheet(
+                "QPushButton { background-color: #555555; color: #999999; }")
+        elif status in ("token_missing", "token_expired"):
+            self.schwab_action_btn.setText("Authorize")
+            self.schwab_action_btn.setEnabled(True)
+            self.schwab_action_btn.setStyleSheet(
+                "QPushButton { background-color: #2196F3; color: white; }")
+        else:  # not_configured
+            self.schwab_action_btn.setText("Save")
+            self.schwab_action_btn.setEnabled(True)
+            self.schwab_action_btn.setStyleSheet(
+                "QPushButton { background-color: #4CAF50; color: white; }")
+
+        # Delete button: enabled unless nothing is configured
+        self.schwab_delete_btn.setEnabled(status != "not_configured")
+
+        # Auth URL field — always Password mode; mask content when authorized
+        if status == "authorized":
+            self.schwab_auth_url_field.setText("authorized")
+            self.schwab_auth_url_field.setReadOnly(True)
+        else:
+            if self.schwab_auth_url_field.isReadOnly():
+                self.schwab_auth_url_field.clear()
+            self.schwab_auth_url_field.setReadOnly(False)
+
+    def schwab_info_clicked(self):
+        """Show info dialog explaining Schwab credential setup."""
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Schwab API — How It Works")
+        msg.setIcon(QMessageBox.Information)
+        msg.setText(
+            "<b>Two sets of credentials are required:</b><br><br>"
+
+            "<b>1. App Key &amp; Secret</b> (from developer.schwab.com)<br>"
+            "Schwab calls these <i>App Key</i> and <i>Secret</i> in their portal — "
+            "enter them in the Client ID and Client Secret fields here. "
+            "These identify your registered application and are stored encrypted "
+            "in your system keychain. They are needed on every startup so the app "
+            "can silently refresh your trading session every 30 minutes.<br><br>"
+
+            "<b>2. Trading Account Login</b> (your normal schwab.com login)<br>"
+            "Click <b>Authorize</b> to open a Schwab login page in your browser. "
+            "Sign in with your Schwab brokerage credentials (the same ones you use "
+            "at schwab.com). Schwab will redirect your browser to a URL starting "
+            "with <tt>https://127.0.0.1:9090/callback?code=...</tt> — copy that "
+            "full URL from the browser address bar, paste it into the <b>Auth URL</b> "
+            "field, then click <b>Authorize</b> again. This one-time step creates an "
+            "OAuth token stored encrypted in your keychain. The token auto-renews "
+            "and you will not need to log in again unless the app is offline for "
+            "more than 7 days."
+        )
+        msg.setTextFormat(Qt.RichText)
+        msg.exec_()
+
+    def schwab_action_clicked(self):
+        """Dispatch to save or authorize based on current button label."""
+        if self.schwab_action_btn.text() == "Save":
+            self._do_schwab_save()
+        else:
+            self._do_schwab_authorize()
+
+    def _do_schwab_save(self):
+        """Save Schwab credentials, init client, and open browser for auth."""
+        client_id = self.schwab_id_field.text().strip()
+        client_secret = self.schwab_secret_field.text().strip()
+        if not client_id or not client_secret:
+            logger.warning("Schwab: Client ID and Client Secret are required")
+            return
+        gm.save_schwab_credentials(client_id, client_secret)
+        schwab_client.init(client_id, client_secret)
+        auth_url = schwab_client.get_auth_url(client_id)
+        webbrowser.open(auth_url)
+        self.update_schwab_status()
+        logger.info("Schwab credentials saved — browser opened for auth")
+
+    def _do_schwab_authorize(self):
+        """Complete OAuth flow using the URL pasted into the Auth URL field."""
+        client_id = self.schwab_id_field.text().strip()
+        client_secret = self.schwab_secret_field.text().strip()
+        if not client_id or not client_secret:
+            QMessageBox.warning(self, "Schwab Auth",
+                                "Enter Client ID and Client Secret first, then click Save.")
+            return
+        received_url = self.schwab_auth_url_field.text().strip()
+        if not received_url:
+            QMessageBox.warning(self, "Schwab Auth",
+                                "Paste the callback URL from your browser into the Auth URL field.")
+            return
+        success = schwab_client.complete_auth(client_id, client_secret, received_url)
+        self.update_schwab_status()
+        if success:
+            logger.info("Schwab authorization complete")
+        else:
+            logger.error("Schwab authorization failed — check logs for details")
+
+    def schwab_delete_clicked(self):
+        """Confirm and delete all Schwab credentials, resetting to not_configured."""
+        reply = QMessageBox.question(
+            self, "Delete Schwab Credentials",
+            "This will remove all saved Schwab credentials and tokens.\nAre you sure?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        gm.delete_schwab_credentials()
+        schwab_client.reset()
+        self.schwab_id_field.clear()
+        self.schwab_secret_field.clear()
+        self.schwab_auth_url_field.clear()
+        self.update_schwab_status()
+        logger.info("Schwab credentials deleted")
 
     def create_search_bar_overlay(self):
         """Create the search bar widget as a floating overlay - VS Code style"""
@@ -404,21 +643,20 @@ class Main_App_Window(QMainWindow):
     # ============================================================================
 
     def toggle_database_card(self):
-        """Toggle the database connection card with animation"""
-        
+        """Toggle the database connection card and Schwab card together."""
+
         # Save window position and size when settings gear is clicked
         self.save_window_position()
 
         if self.db_card_visible:
-            # Slide out (collapse) database card
             self.animate_card(self.db_card, 0)
+            self.animate_card(self.schwab_card, 0)
             self.db_card_visible = False
         else:
-            # Show and slide in (expand) database card
             self.db_card.show()
-            # Calculate target height based on content
-            target_height = self.db_card.sizeHint().height()
-            self.animate_card(self.db_card, target_height)
+            self.schwab_card.show()
+            self.animate_card(self.db_card, self.db_card.sizeHint().height())
+            self.animate_card(self.schwab_card, self.schwab_card.sizeHint().height())
             self.db_card_visible = True
     
     def animate_card(self, card, target_height):

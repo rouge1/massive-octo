@@ -15,16 +15,34 @@ import apps.database as db
 import apps.options_timer as ot
 import apps.gui_methods as gm
 import apps.app_ui as app_ui
+import apps.schwab_client as schwab_client
 
 # Configure logger properly
 logger = logging.getLogger(__name__)
 if not logger.handlers:
-    # Console handler (keep existing functionality)
     console_handler = logging.StreamHandler()
     console_formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s', datefmt='%Y-%m-%d [%H:%M:%S]')
     console_handler.setFormatter(console_formatter)
     logger.addHandler(console_handler)
     logger.setLevel(logging.INFO)
+
+# Buffer early log records (before the GUI signal handler exists) so we can
+# replay them into the status log window once the worker is set up.
+class _EarlyBufferHandler(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.records = []
+    def emit(self, record):
+        self.records.append(record)
+
+_early_buffer = _EarlyBufferHandler()
+_early_buffer.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+
+# Attach to all loggers that BackgroundWorker will later hook into
+for _log_name in (__name__, 'apps.app_ui', 'apps.options_timer',
+                  'apps.options_api', 'apps.schwab_client',
+                  'apps.database', 'apps.gui_methods'):
+    logging.getLogger(_log_name).addHandler(_early_buffer)
 
 # Create a dedicated database manager instance for options_watcher.py
 # Each application should have its own DatabaseManager instance
@@ -86,6 +104,7 @@ class BackgroundWorker(QThread):
         self._add_signal_handler_to_logger(logging.getLogger('apps.options_ui'))
         self._add_signal_handler_to_logger(logging.getLogger('apps.options_timer'))
         self._add_signal_handler_to_logger(logging.getLogger('apps.options_api'))
+        self._add_signal_handler_to_logger(logging.getLogger('apps.schwab_client'))
         self._add_signal_handler_to_logger(logging.getLogger('apps.database'))
         self._add_signal_handler_to_logger(logging.getLogger('apps.gui_methods'))
         
@@ -179,12 +198,28 @@ if __name__ == "__main__":
     start_time_iso = datetime.now(timezone.utc).isoformat()
     gm.save_settings(start_time=start_time_iso)
     logger.info(f"Recorded start time: {start_time_iso}")
-    
+
     app = QApplication(sys.argv)
-    
-    # Create worker first, then pass it and db_manager to App
+
+    # Create worker first (attaches signal handler to loggers), then init Schwab
     worker = BackgroundWorker()
+
+    # Initialize Schwab client — after worker so the log reaches the GUI
+    creds = gm.get_schwab_credentials()
+    if creds.get('client_id') and creds.get('client_secret'):
+        schwab_client.init(creds['client_id'], creds['client_secret'])
+        logger.info("Schwab client initialized" if schwab_client.is_available()
+                    else "Schwab tokens missing/expired — using yfinance")
+
     window = app_ui.Main_App_Window(worker, db_manager)
+
+    # Replay early buffered log records into the GUI, then discard the buffer
+    for _record in _early_buffer.records:
+        worker.update_signal.emit(_early_buffer.format(_record))
+    for _log_name in (__name__, 'apps.app_ui', 'apps.options_timer',
+                      'apps.options_api', 'apps.schwab_client',
+                      'apps.database', 'apps.gui_methods'):
+        logging.getLogger(_log_name).removeHandler(_early_buffer)
     
     window.show()
     

@@ -6,6 +6,11 @@ import os
 import json
 
 # Third-party imports
+import keyring
+
+KEYRING_SERVICE = "options-tracker-schwab"
+
+# Qt imports
 from PyQt5.QtCore import QObject, pyqtSignal
 
 # Get logger for this module (will use root logger's handlers)
@@ -625,3 +630,36 @@ def get_website_full_domain():
     domain = get_website_domain()
     port = get_website_port()
     return f"{domain}:{port}"
+
+
+def save_schwab_credentials(client_id, client_secret):
+    """Save Schwab client_id and client_secret to GNOME Keyring (never plaintext)."""
+    try:
+        keyring.set_password(KEYRING_SERVICE, "client_id", client_id)
+        keyring.set_password(KEYRING_SERVICE, "client_secret", client_secret)
+        logger.debug("Schwab credentials saved to keyring")
+    except Exception as e:
+        logger.error(f"Failed to save Schwab credentials to keyring: {e}")
+
+
+def get_schwab_credentials() -> dict:
+    """Return {'client_id': ..., 'client_secret': ...} from GNOME Keyring."""
+    try:
+        return {
+            "client_id": keyring.get_password(KEYRING_SERVICE, "client_id"),
+            "client_secret": keyring.get_password(KEYRING_SERVICE, "client_secret"),
+        }
+    except Exception as e:
+        logger.error(f"Failed to read Schwab credentials from keyring: {e}")
+        return {"client_id": None, "client_secret": None}
+
+
+def delete_schwab_credentials():
+    """Remove all Schwab keys from GNOME Keyring (creds + OAuth token)."""
+    for username in ("client_id", "client_secret", "oauth_token"):
+        try:
+            keyring.delete_password(KEYRING_SERVICE, username)
+        except keyring.errors.PasswordDeleteError:
+            pass  # Already absent — fine
+        except Exception as e:
+            logger.error(f"Failed to delete Schwab key '{username}': {e}")
