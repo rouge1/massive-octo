@@ -1163,7 +1163,7 @@ function WatchlistTableHeader({ sortBy, sortDirection, onSort }) {
 }
 
 // Custom strike dropdown — centers the selected (ATM) option when opened
-function StrikeSelect({ strikes, value, onChange, disabled, stockPrice, putCall }) {
+function StrikeSelect({ strikes, value, onChange, disabled, stockPrice, putCall, stale }) {
     const [open, setOpen] = useState(false);
     const containerRef = useRef(null);
     const listRef = useRef(null);
@@ -1198,7 +1198,7 @@ function StrikeSelect({ strikes, value, onChange, disabled, stockPrice, putCall 
                 className="quick-add-select"
                 style={{
                     width: '100%', textAlign: 'left', cursor: disabled ? 'not-allowed' : 'pointer',
-                    opacity: disabled ? 0.5 : 1, display: 'flex', justifyContent: 'space-between',
+                    opacity: disabled ? 0.5 : stale ? 0.45 : 1, display: 'flex', justifyContent: 'space-between',
                     alignItems: 'center'
                 }}
                 disabled={disabled}
@@ -1228,10 +1228,10 @@ function StrikeSelect({ strikes, value, onChange, disabled, stockPrice, putCall 
                                     padding: '0 10px', cursor: 'pointer', fontSize: '0.85em',
                                     backgroundColor: isSelected
                                         ? 'var(--accent-primary)'
-                                        : isOtm ? '#444' : 'var(--bg-card)',
+                                        : (stale || isOtm) ? '#444' : 'var(--bg-card)',
                                     color: isSelected
                                         ? 'var(--bg-primary)'
-                                        : isOtm ? '#aaa' : 'var(--text-primary)',
+                                        : (stale || isOtm) ? '#aaa' : 'var(--text-primary)',
                                     userSelect: 'none'
                                 }}
                                 onMouseEnter={e => { if (!isSelected) e.currentTarget.style.opacity = '0.8'; }}
@@ -1263,6 +1263,7 @@ function QuickAddCard({ onAdded }) {
     const [status, setStatus] = useState('idle'); // idle | loading-strikes | strikes | loading-contracts | contracts | adding
     const [error, setError] = useState(null);
     const [stockPrice, setStockPrice] = useState(null);
+    const [strikesStale, setStrikesStale] = useState(false);
 
     const isLoading = status === 'loading-strikes' || status === 'loading-contracts' || status === 'adding';
 
@@ -1287,6 +1288,7 @@ function QuickAddCard({ onAdded }) {
         const pc = putCallVal || putCall;
         const t = ticker.trim().toUpperCase();
         if (!t) return;
+        setStrikesStale(false);
         setStatus('loading-strikes');
         setError(null);
         setStrikes([]);
@@ -1385,7 +1387,7 @@ function QuickAddCard({ onAdded }) {
                     type="text"
                     className="quick-add-ticker"
                     value={ticker}
-                    onChange={e => setTicker(e.target.value.toUpperCase())}
+                    onChange={e => { setTicker(e.target.value.toUpperCase()); if (strikes.length > 0) setStrikesStale(true); }}
                     onKeyDown={handleTickerKeyDown}
                     placeholder="TICKER"
                     disabled={isLoading}
@@ -1409,6 +1411,7 @@ function QuickAddCard({ onAdded }) {
                     disabled={isLoading}
                     stockPrice={stockPrice}
                     putCall={putCall}
+                    stale={strikesStale}
                 />
                 <select
                     className="quick-add-select"
