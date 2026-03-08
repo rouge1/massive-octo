@@ -38,7 +38,7 @@ def _read_token():
     return json.loads(raw)
 
 
-def _write_token(token):
+def _write_token(token, **kwargs):
     """Write the OAuth token to GNOME Keyring."""
     keyring.set_password(KEYRING_SERVICE, KEYRING_TOKEN_KEY, json.dumps(token))
 
@@ -210,7 +210,7 @@ def list_available_contracts(ticker: str, strike: float, put_call: str) -> list:
                 if abs(float(sk) - strike) < 0.01:
                     for c in contracts:
                         result.append({
-                            "contract_symbol": c["symbol"],
+                            "contract_symbol": c["symbol"].replace(" ", ""),
                             "expiration": exp_str,
                             "dte": dte,
                         })

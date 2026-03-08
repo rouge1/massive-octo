@@ -193,12 +193,15 @@ class OptionsServer:
             try:
                 session = self.db_manager.get_session()
                 try:
+                    # Normalize to OCC format (Schwab adds spaces, yfinance doesn't)
+                    contract_symbol = request.contract_symbol.replace(" ", "")
+
                     # Check if already exists
                     existing = session.query(db.OptionsWatchlist).filter(
                         db.OptionsWatchlist.user_id == self.default_user_id,
-                        db.OptionsWatchlist.contract_symbol == request.contract_symbol
+                        db.OptionsWatchlist.contract_symbol == contract_symbol
                     ).first()
-                    
+
                     if existing:
                         if not existing.is_active:
                             # Reactivate
@@ -206,7 +209,7 @@ class OptionsServer:
                             session.commit()
                             return {"status": "reactivated", "item": existing.to_dict()}
                         return {"status": "already_exists", "item": existing.to_dict()}
-                    
+
                     # Create new item
                     item = db.OptionsWatchlist(
                         user_id=self.default_user_id,
@@ -214,7 +217,7 @@ class OptionsServer:
                         strike=request.strike,
                         put_call=request.put_call.lower(),
                         expiration=request.expiration,
-                        contract_symbol=request.contract_symbol,
+                        contract_symbol=contract_symbol,
                         notes=request.notes,
                         added_at=datetime.now(timezone.utc),
                         is_active=True
@@ -316,7 +319,9 @@ class OptionsServer:
         async def get_market_status():
             """Check if market is open"""
             try:
+                from apps import schwab_client
                 status = options_api.is_market_open()
+                status["data_source"] = "schwab" if schwab_client.is_available() else "yfinance"
                 return status
             except Exception as e:
                 logger.error(f"Error checking market status: {e}")

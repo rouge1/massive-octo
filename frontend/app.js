@@ -1162,6 +1162,96 @@ function WatchlistTableHeader({ sortBy, sortDirection, onSort }) {
     );
 }
 
+// Custom strike dropdown — centers the selected (ATM) option when opened
+function StrikeSelect({ strikes, value, onChange, disabled, stockPrice, putCall }) {
+    const [open, setOpen] = useState(false);
+    const containerRef = useRef(null);
+    const listRef = useRef(null);
+    const ITEM_H = 28;
+
+    // Close on outside click
+    useEffect(() => {
+        if (!open) return;
+        const handler = (e) => {
+            if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [open]);
+
+    // Scroll selected item to center when list opens
+    useEffect(() => {
+        if (!open || !listRef.current || !value) return;
+        const idx = strikes.indexOf(parseFloat(value));
+        if (idx < 0) return;
+        const list = listRef.current;
+        const itemTop = idx * ITEM_H;
+        list.scrollTop = itemTop - list.clientHeight / 2 + ITEM_H / 2;
+    }, [open]);
+
+    const label = value ? `$${parseFloat(value).toFixed(2)}` : `Strike ${strikes.length === 0 ? '—' : '▾'}`;
+
+    return (
+        <div ref={containerRef} style={{ position: 'relative', flex: '1 1 0px', minWidth: 0 }}>
+            <button
+                type="button"
+                className="quick-add-select"
+                style={{
+                    width: '100%', textAlign: 'left', cursor: disabled ? 'not-allowed' : 'pointer',
+                    opacity: disabled ? 0.5 : 1, display: 'flex', justifyContent: 'space-between',
+                    alignItems: 'center'
+                }}
+                disabled={disabled}
+                onClick={() => !disabled && strikes.length > 0 && setOpen(o => !o)}
+            >
+                <span>{label}</span>
+                {strikes.length > 0 && <span style={{ opacity: 0.6, fontSize: '0.75em' }}>▾</span>}
+            </button>
+            {open && (
+                <div
+                    ref={listRef}
+                    style={{
+                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1000,
+                        maxHeight: `${ITEM_H * 10}px`, overflowY: 'auto',
+                        background: 'var(--bg-card)', border: '1px solid var(--border-color)',
+                        borderRadius: '4px', boxShadow: '0 4px 16px rgba(0,0,0,0.4)'
+                    }}
+                >
+                    {strikes.map(s => {
+                        const isOtm = stockPrice ? (putCall === 'call' ? s < stockPrice : s > stockPrice) : false;
+                        const isSelected = String(s) === String(value);
+                        return (
+                            <div
+                                key={s}
+                                style={{
+                                    height: `${ITEM_H}px`, lineHeight: `${ITEM_H}px`,
+                                    padding: '0 10px', cursor: 'pointer', fontSize: '0.85em',
+                                    backgroundColor: isSelected
+                                        ? 'var(--accent-primary)'
+                                        : isOtm ? '#444' : 'var(--bg-card)',
+                                    color: isSelected
+                                        ? 'var(--bg-primary)'
+                                        : isOtm ? '#aaa' : 'var(--text-primary)',
+                                    userSelect: 'none'
+                                }}
+                                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.opacity = '0.8'; }}
+                                onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
+                                onMouseDown={e => {
+                                    e.preventDefault();
+                                    onChange(String(s));
+                                    setOpen(false);
+                                }}
+                            >
+                                ${s.toFixed(2)}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
+
 // Quick-Add Card Component
 function QuickAddCard({ onAdded }) {
     const [ticker, setTicker] = useState('');
@@ -1172,11 +1262,31 @@ function QuickAddCard({ onAdded }) {
     const [selectedContract, setSelectedContract] = useState('');
     const [status, setStatus] = useState('idle'); // idle | loading-strikes | strikes | loading-contracts | contracts | adding
     const [error, setError] = useState(null);
+    const [stockPrice, setStockPrice] = useState(null);
 
     const isLoading = status === 'loading-strikes' || status === 'loading-contracts' || status === 'adding';
 
-    const loadStrikes = async () => {
-        if (!ticker.trim()) return;
+    const loadContracts = async (tickerVal, strikeVal, pc) => {
+        const resolvedPc = pc || putCall;
+        setStatus('loading-contracts');
+        setContracts([]);
+        setSelectedContract('');
+        try {
+            const res = await fetch(`${API_BASE}/api/contracts/${tickerVal}/${strikeVal}/${resolvedPc}`);
+            if (!res.ok) throw new Error('Failed to load contracts');
+            const data = await res.json();
+            setContracts(data.contracts || []);
+            setStatus('contracts');
+        } catch (e) {
+            setError(e.message);
+            setStatus('strikes');
+        }
+    };
+
+    const loadStrikes = async (putCallVal) => {
+        const pc = putCallVal || putCall;
+        const t = ticker.trim().toUpperCase();
+        if (!t) return;
         setStatus('loading-strikes');
         setError(null);
         setStrikes([]);
@@ -1185,14 +1295,26 @@ function QuickAddCard({ onAdded }) {
         setSelectedContract('');
 
         try {
-            const res = await fetch(`${API_BASE}/api/strikes/${ticker.trim().toUpperCase()}/${putCall}`);
+            const res = await fetch(`${API_BASE}/api/strikes/${t}/${pc}`);
             if (!res.ok) throw new Error('Failed to load strikes');
             const data = await res.json();
             if (!data.strikes || data.strikes.length === 0) {
                 throw new Error('No options found for this ticker');
             }
-            setStrikes(data.strikes);
+            const strikesArr = data.strikes;
+            const price = data.stock_price || null;
+            setStockPrice(price);
+            setStrikes(strikesArr);
             setStatus('strikes');
+
+            // Pre-select closest strike to stock price and auto-load contracts
+            if (strikesArr.length > 0 && price) {
+                const closest = strikesArr.reduce((a, b) =>
+                    Math.abs(b - price) < Math.abs(a - price) ? b : a
+                );
+                setSelectedStrike(String(closest));
+                loadContracts(t, closest, pc);
+            }
         } catch (e) {
             setError(e.message);
             setStatus('idle');
@@ -1205,8 +1327,7 @@ function QuickAddCard({ onAdded }) {
         }
     };
 
-    const handleStrikeChange = async (e) => {
-        const strike = e.target.value;
+    const handleStrikeChange = (strike) => {
         setSelectedStrike(strike);
         setContracts([]);
         setSelectedContract('');
@@ -1216,19 +1337,8 @@ function QuickAddCard({ onAdded }) {
             return;
         }
 
-        setStatus('loading-contracts');
         setError(null);
-
-        try {
-            const res = await fetch(`${API_BASE}/api/contracts/${ticker.trim().toUpperCase()}/${strike}/${putCall}`);
-            if (!res.ok) throw new Error('Failed to load contracts');
-            const data = await res.json();
-            setContracts(data.contracts || []);
-            setStatus('contracts');
-        } catch (e) {
-            setError(e.message);
-            setStatus('strikes');
-        }
+        loadContracts(ticker.trim().toUpperCase(), strike, putCall);
     };
 
     const handleAdd = async () => {
@@ -1283,26 +1393,23 @@ function QuickAddCard({ onAdded }) {
                 <div className="quick-add-putcall">
                     <button
                         className={`putcall-btn ${putCall === 'call' ? 'active' : ''}`}
-                        onClick={() => setPutCall('call')}
+                        onClick={() => { setPutCall('call'); if (ticker.trim()) loadStrikes('call'); }}
                         disabled={isLoading}
                     >CALL</button>
                     <button
                         className={`putcall-btn ${putCall === 'put' ? 'active' : ''}`}
-                        onClick={() => setPutCall('put')}
+                        onClick={() => { setPutCall('put'); if (ticker.trim()) loadStrikes('put'); }}
                         disabled={isLoading}
                     >PUT</button>
                 </div>
-                <select
-                    className="quick-add-select"
+                <StrikeSelect
+                    strikes={strikes}
                     value={selectedStrike}
                     onChange={handleStrikeChange}
-                    disabled={isLoading || strikes.length === 0}
-                >
-                    <option value="">Strike {strikes.length === 0 ? '—' : '▾'}</option>
-                    {strikes.map(s => (
-                        <option key={s} value={s}>${s.toFixed(2)}</option>
-                    ))}
-                </select>
+                    disabled={isLoading}
+                    stockPrice={stockPrice}
+                    putCall={putCall}
+                />
                 <select
                     className="quick-add-select"
                     value={selectedContract}
@@ -1517,8 +1624,19 @@ function App() {
             <div className="app">
                 <Header marketStatus={marketStatus} />
                 <WatchlistView />
+                <DataSourceBadge source={marketStatus?.data_source} />
             </div>
         </ThemeProvider>
+    );
+}
+
+function DataSourceBadge({ source }) {
+    if (!source) return null;
+    const isSchwab = source === 'schwab';
+    return (
+        <div className="data-source-badge">
+            Powered by {isSchwab ? 'Charles Schwab' : 'yfinance'}
+        </div>
     );
 }
 

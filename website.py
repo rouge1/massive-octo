@@ -16,6 +16,7 @@ import apps.database as db
 from apps.website_ui import Main_Website_Window
 from apps.options_server import OptionsServer
 from apps import gui_methods as gm
+from apps import schwab_client
 
 # Configure logger properly
 logger = logging.getLogger(__name__)
@@ -350,6 +351,14 @@ if __name__ == "__main__":
     
     # Create worker first, then pass it and db_manager to Window
     worker = BackgroundWorker()
+
+    # Initialize Schwab client — after worker so the log reaches the GUI
+    creds = gm.get_schwab_credentials()
+    if creds.get('client_id') and creds.get('client_secret'):
+        schwab_client.init(creds['client_id'], creds['client_secret'])
+        logger.info("Schwab client initialized" if schwab_client.is_available()
+                    else "Schwab tokens missing/expired — using yfinance")
+
     window = Main_Website_Window(worker, db_manager)
     
     # Connect cleanup to run before PyQt cleanup
