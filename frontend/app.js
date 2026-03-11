@@ -722,6 +722,25 @@ function Chart({ data, selectedDate }) {
     );
 }
 
+// Helpers for formatting nullable numbers
+const fmt = (v, decimals = 2) => v != null ? Number(v).toFixed(decimals) : '—';
+const fmtIV = (v) => v != null ? (v * 100).toFixed(1) + '%' : '—';
+
+// Map a raw DB/SSE snapshot to the shape expected by Chart and DataTable
+function mapSnapshot(s) {
+    return {
+        timestamp: s.timestamp,
+        premium: s.mid,
+        stock_price: s.stock_price,
+        spread_pct: s.spread_pct,
+        option_data: {
+            bid: s.bid, ask: s.ask, mid: s.mid,
+            last: s.last_price, volume: s.volume,
+            open_interest: s.open_interest, iv: s.implied_volatility,
+        }
+    };
+}
+
 // Data Table Toggle Header (separate component for header row layout)
 function DataTableToggleHeader({ isOpen, onToggle, selectedDate, availableDates, onDateChange }) {
     const hasDates = availableDates && availableDates.length > 0 && selectedDate;
@@ -791,15 +810,15 @@ function DataTable({ data, isOpen }) {
                             return (
                                 <tr key={i}>
                                     <td>{new Date(d.timestamp).toLocaleTimeString()}</td>
-                                    <td>{d.premium != null ? d.premium.toFixed(2) : '—'}</td>
-                                    <td>{od && od.last != null ? od.last.toFixed(2) : '—'}</td>
-                                    <td>{od && od.bid != null ? od.bid.toFixed(2) : '—'}</td>
-                                    <td>{od && od.ask != null ? od.ask.toFixed(2) : '—'}</td>
-                                    <td>{d.stock_price != null ? d.stock_price.toFixed(2) : '—'}</td>
-                                    <td>{d.spread_pct != null ? d.spread_pct.toFixed(2) : '—'}</td>
-                                    <td>{od && od.volume != null ? od.volume : '—'}</td>
-                                    <td>{od && od.open_interest != null ? od.open_interest : '—'}</td>
-                                    <td>{od && od.iv != null ? (od.iv * 100).toFixed(1) + '%' : '—'}</td>
+                                    <td>{fmt(d.premium)}</td>
+                                    <td>{fmt(od?.last)}</td>
+                                    <td>{fmt(od?.bid)}</td>
+                                    <td>{fmt(od?.ask)}</td>
+                                    <td>{fmt(d.stock_price)}</td>
+                                    <td>{fmt(d.spread_pct)}</td>
+                                    <td>{fmt(od?.volume, 0)}</td>
+                                    <td>{fmt(od?.open_interest, 0)}</td>
+                                    <td>{fmtIV(od?.iv)}</td>
                                 </tr>
                             );
                         })}
@@ -1030,17 +1049,7 @@ function WatchlistRow({ item, onRemove }) {
             const res = await fetch(`${API_BASE}/api/snapshots/${item.id}?limit=5000`);
             const raw = await res.json();
             // Map MySQL fields → Chart/DataTable shape, reverse to oldest-first
-            const mapped = raw.map(s => ({
-                timestamp: s.timestamp,
-                premium: s.mid,
-                stock_price: s.stock_price,
-                spread_pct: s.spread_pct,
-                option_data: {
-                    bid: s.bid, ask: s.ask, mid: s.mid,
-                    last: s.last_price, volume: s.volume,
-                    open_interest: s.open_interest, iv: s.implied_volatility,
-                }
-            })).reverse();
+            const mapped = raw.map(mapSnapshot).reverse();
             setHistoryData(mapped);
             // Default to today if data exists for today, else most recent date
             const today = new Date().toLocaleDateString('en-CA');
@@ -1060,17 +1069,7 @@ function WatchlistRow({ item, onRemove }) {
                 const data = JSON.parse(event.data);
                 if (!data.snapshot) return;
                 const s = data.snapshot;
-                const newPoint = {
-                    timestamp: s.timestamp,
-                    premium: s.mid,
-                    stock_price: s.stock_price,
-                    spread_pct: s.spread_pct,
-                    option_data: {
-                        bid: s.bid, ask: s.ask, mid: s.mid,
-                        last: s.last_price, volume: s.volume,
-                        open_interest: s.open_interest, iv: s.implied_volatility,
-                    }
-                };
+                const newPoint = mapSnapshot(s);
                 setHistoryData(prev => {
                     if (prev.length === 0) return [newPoint];
                     const last = prev[prev.length - 1];
@@ -1454,12 +1453,12 @@ function QuickAddCard({ onAdded }) {
                 <div className="quick-add-putcall">
                     <button
                         className={`putcall-btn ${putCall === 'call' ? 'active' : ''}`}
-                        onClick={() => { setPutCall('call'); if (ticker.trim()) loadStrikes('call'); }}
+                        onClick={() => { if (putCall === 'call' && strikes.length > 0 && !strikesStale) return; setPutCall('call'); if (ticker.trim()) loadStrikes('call'); }}
                         disabled={isLoading}
                     >CALL</button>
                     <button
                         className={`putcall-btn ${putCall === 'put' ? 'active' : ''}`}
-                        onClick={() => { setPutCall('put'); if (ticker.trim()) loadStrikes('put'); }}
+                        onClick={() => { if (putCall === 'put' && strikes.length > 0 && !strikesStale) return; setPutCall('put'); if (ticker.trim()) loadStrikes('put'); }}
                         disabled={isLoading}
                     >PUT</button>
                 </div>

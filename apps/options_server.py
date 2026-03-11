@@ -26,6 +26,7 @@ from pydantic import BaseModel
 # Local imports
 import apps.database as db
 import apps.options_api as options_api
+from apps import schwab_client
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -319,7 +320,6 @@ class OptionsServer:
         async def get_market_status():
             """Check if market is open"""
             try:
-                from apps import schwab_client
                 status = options_api.is_market_open()
                 status["data_source"] = "schwab" if schwab_client.is_available() else "yfinance"
                 return status
