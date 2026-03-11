@@ -610,9 +610,15 @@ body {
 
 .data-table th,
 .data-table td {
-    padding: var(--space-sm) var(--space-md);
-    text-align: left;
+    padding: var(--space-xs) var(--space-sm);
+    text-align: center;
     border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.data-table td:first-child,
+.data-table th:first-child {
+    text-align: left;
 }
 
 .data-table th {
@@ -632,6 +638,15 @@ body {
 
 .data-table tr:last-child td {
     border-bottom: none;
+}
+
+/* Ensure data-table th centering isn't overridden by .watchlist-table th rules
+   (data-table is nested inside watchlist-table rows; !important isolates it) */
+.data-table thead th {
+    text-align: center !important;
+}
+.data-table thead th:first-child {
+    text-align: left !important;
 }
 
 /* Empty State */

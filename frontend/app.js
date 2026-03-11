@@ -625,6 +625,7 @@ function Chart({ data, selectedDate }) {
 
         const timestamps = data.map(d => new Date(d.timestamp));
         const premiums = data.map(d => d.premium);
+        const lasts = data.map(d => d.option_data ? d.option_data.last : null);
         const stockPrices = data.map(d => d.stock_price);
 
         // Pin x-axis to market hours (9:00 AM – 4:00 PM) on the selected date
@@ -636,11 +637,22 @@ function Chart({ data, selectedDate }) {
             {
                 x: timestamps,
                 y: premiums,
-                name: 'Option Premium',
+                name: 'Mid (Bid+Ask)/2',
                 type: 'scatter',
                 mode: 'lines+markers',
                 line: { color: colors.premium, width: 2 },
                 marker: { size: 6 },
+                yaxis: 'y'
+            },
+            {
+                x: timestamps,
+                y: lasts,
+                name: 'Last Trade',
+                type: 'scatter',
+                mode: 'markers',
+                line: { color: '#00aaff', width: 2, dash: 'dot' },
+                marker: { size: 5, color: '#00aaff' },
+                connectgaps: false,
                 yaxis: 'y'
             },
             {
@@ -664,7 +676,7 @@ function Chart({ data, selectedDate }) {
                 tickfont: { color: colors.text, size: 10 }
             },
             yaxis: {
-                title: { text: 'Premium ($)', font: { color: colors.text, size: 11 } },
+                title: { text: 'Price ($)', font: { color: colors.text, size: 11 } },
                 showgrid: true,
                 gridcolor: colors.grid,
                 tickfont: { color: colors.text, size: 10 },
@@ -762,20 +774,35 @@ function DataTable({ data, isOpen }) {
                     <thead>
                         <tr>
                             <th>Time</th>
-                            <th>Premium ($)</th>
+                            <th>Mid ($)</th>
+                            <th>Last ($)</th>
+                            <th>Bid ($)</th>
+                            <th>Ask ($)</th>
                             <th>Stock ($)</th>
                             <th>Spread (%)</th>
+                            <th>Volume</th>
+                            <th>OI</th>
+                            <th>IV %</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {displayData.map((d, i) => (
-                            <tr key={i}>
-                                <td>{new Date(d.timestamp).toLocaleTimeString()}</td>
-                                <td>{d.premium.toFixed(2)}</td>
-                                <td>{d.stock_price.toFixed(2)}</td>
-                                <td>{d.spread_pct.toFixed(2)}</td>
-                            </tr>
-                        ))}
+                        {displayData.map((d, i) => {
+                            const od = d.option_data;
+                            return (
+                                <tr key={i}>
+                                    <td>{new Date(d.timestamp).toLocaleTimeString()}</td>
+                                    <td>{d.premium != null ? d.premium.toFixed(2) : '—'}</td>
+                                    <td>{od && od.last != null ? od.last.toFixed(2) : '—'}</td>
+                                    <td>{od && od.bid != null ? od.bid.toFixed(2) : '—'}</td>
+                                    <td>{od && od.ask != null ? od.ask.toFixed(2) : '—'}</td>
+                                    <td>{d.stock_price != null ? d.stock_price.toFixed(2) : '—'}</td>
+                                    <td>{d.spread_pct != null ? d.spread_pct.toFixed(2) : '—'}</td>
+                                    <td>{od && od.volume != null ? od.volume : '—'}</td>
+                                    <td>{od && od.open_interest != null ? od.open_interest : '—'}</td>
+                                    <td>{od && od.iv != null ? (od.iv * 100).toFixed(1) + '%' : '—'}</td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
@@ -969,6 +996,7 @@ function WatchlistRow({ item, onRemove }) {
                     setError(data.error);
                 } else {
                     setSnapshot(data);
+                    setError(null);
                 }
             } catch (e) {
                 setError(e.message);
@@ -1022,6 +1050,37 @@ function WatchlistRow({ item, onRemove }) {
             setHistoryLoading(false);
         }
     };
+
+    // SSE: append new snapshots to the chart in real-time while the row is expanded
+    useEffect(() => {
+        if (!expanded) return;
+        const sse = new EventSource(`${API_BASE}/sse/option/${item.id}`);
+        sse.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (!data.snapshot) return;
+                const s = data.snapshot;
+                const newPoint = {
+                    timestamp: s.timestamp,
+                    premium: s.mid,
+                    stock_price: s.stock_price,
+                    spread_pct: s.spread_pct,
+                    option_data: {
+                        bid: s.bid, ask: s.ask, mid: s.mid,
+                        last: s.last_price, volume: s.volume,
+                        open_interest: s.open_interest, iv: s.implied_volatility,
+                    }
+                };
+                setHistoryData(prev => {
+                    if (prev.length === 0) return [newPoint];
+                    const last = prev[prev.length - 1];
+                    if (last.timestamp === newPoint.timestamp) return prev;
+                    return [...prev, newPoint];
+                });
+            } catch(e) {}
+        };
+        return () => sse.close();
+    }, [expanded, item.id]);
 
     const handleRemove = (e) => {
         e.stopPropagation();
