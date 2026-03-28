@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 
 import apps.database as db
 import apps.options_api as options_api
+from apps import schwab_client
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ class OptionsTimer:
         
         self._db_not_connected_logged = False
         self._no_watchlist_logged = False
+        self._backfill_done = False
         
         logger.info(f"OptionsTimer initialized (db_manager: {id(self.db_manager) if self.db_manager else None})")
     
@@ -82,7 +84,12 @@ class OptionsTimer:
                 if self._db_not_connected_logged:
                     logger.info("Database connection detected - starting options polling")
                     self._db_not_connected_logged = False
-                
+
+                # One-time backfill from Schwab history
+                if not self._backfill_done and schwab_client.is_available():
+                    await self._backfill_from_schwab()
+                    self._backfill_done = True
+
                 # Get active watchlist items
                 session = self.db_manager.get_session()
                 try:
@@ -169,6 +176,100 @@ class OptionsTimer:
                 logger.error(f"Error in options timer loop: {e}")
                 await asyncio.sleep(30)  # Wait before retrying on error
     
+    async def _backfill_from_schwab(self):
+        """Pull historical 5-min candles from Schwab and insert missing snapshots."""
+        session = self.db_manager.get_session()
+        try:
+            items = session.query(db.OptionsWatchlist).filter(
+                db.OptionsWatchlist.is_active == True
+            ).all()
+
+            if not items:
+                logger.info("Backfill: no active watchlist items")
+                return
+
+            total_inserted = 0
+
+            # Group by ticker so we fetch stock candles once per underlying
+            ticker_items = {}
+            for item in items:
+                ticker_items.setdefault(item.ticker, []).append(item)
+
+            for ticker, group in ticker_items.items():
+                # Fetch stock price candles for the underlying ticker
+                stock_candles = {}
+                try:
+                    raw = schwab_client.get_price_history_candles(ticker)
+                    for c in raw:
+                        stock_candles[c["timestamp"]] = c["close"]
+                    logger.info(f"Backfill: {ticker} stock — {len(raw)} candles")
+                except Exception as e:
+                    logger.warning(f"Backfill: failed stock history for {ticker}: {e}")
+
+                # Fetch option candles per contract and insert
+                for item in group:
+                    try:
+                        option_candles = schwab_client.get_price_history_candles(
+                            item.contract_symbol
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Backfill: failed option history for "
+                            f"{item.contract_symbol}: {e}"
+                        )
+                        continue
+
+                    if not option_candles:
+                        continue
+
+                    # Load existing timestamps to avoid duplicates
+                    existing = set(
+                        row[0] for row in session.query(db.OptionSnapshot.timestamp)
+                        .filter(db.OptionSnapshot.watchlist_id == item.id)
+                        .all()
+                    )
+
+                    inserted = 0
+                    for candle in option_candles:
+                        if candle["timestamp"] in existing:
+                            continue
+
+                        stock_price = stock_candles.get(candle["timestamp"])
+                        mid = candle["close"]
+                        spread_pct = (
+                            (mid / stock_price) * 100
+                            if stock_price and stock_price > 0
+                            else None
+                        )
+
+                        snapshot = db.OptionSnapshot(
+                            watchlist_id=item.id,
+                            timestamp=candle["timestamp"],
+                            stock_price=stock_price,
+                            mid=mid,
+                            last_price=mid,
+                            volume=candle["volume"],
+                            spread_pct=spread_pct,
+                        )
+                        session.add(snapshot)
+                        inserted += 1
+
+                    if inserted:
+                        logger.info(
+                            f"Backfill: {item.ticker} ${item.strike} "
+                            f"{item.put_call} — {inserted} snapshots"
+                        )
+                    total_inserted += inserted
+
+            session.commit()
+            logger.info(f"Backfill complete: {total_inserted} snapshots inserted")
+
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Backfill failed: {e}")
+        finally:
+            session.close()
+
     def get_watchlist(self) -> list[dict]:
         """
         Get all watchlist items.

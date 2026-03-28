@@ -67,13 +67,32 @@ def init(client_id: str, client_secret: str) -> None:
             _client = schwab.auth.client_from_access_functions(
                 client_id, client_secret, _read_token, _write_token
             )
-            logger.info("Schwab client initialized from keyring")
+            # Validate that the token actually works with a lightweight call
+            if not _validate_client():
+                logger.warning("Schwab token is expired or invalid — re-authorize via GUI")
+                _client = None
+            else:
+                logger.info("Schwab client initialized from keyring")
         else:
             logger.info("Schwab tokens not found in keyring — use GUI to authorize")
             _client = None
     except Exception as e:
         logger.warning(f"Schwab client init failed: {e}")
         _client = None
+
+
+def _validate_client() -> bool:
+    """Make a lightweight API call to verify the token is still valid."""
+    if _client is None:
+        return False
+    try:
+        resp = _client.get_market_hours(
+            _client.MarketHours.Market.EQUITY
+        )
+        return resp.status_code == 200
+    except Exception as e:
+        logger.debug(f"Schwab token validation failed: {e}")
+        return False
 
 
 def is_available() -> bool:
@@ -281,3 +300,44 @@ def fetch_snapshot(ticker: str, expiration: str, strike: float, put_call: str) -
         "spread_pct": spread_pct,
         **option_data,
     }
+
+
+def get_price_history_candles(symbol: str, start_datetime: datetime = None) -> list[dict]:
+    """Fetch 5-minute candle history for a symbol (stock ticker or option contract).
+
+    Returns list of dicts: [{"timestamp": datetime, "close": float, "volume": int}, ...]
+    """
+    if not _client:
+        raise SchwabUnavailable("Schwab not available")
+    try:
+        import schwab
+        PH = schwab.client.Client.PriceHistory
+
+        kwargs = dict(
+            frequency_type=PH.FrequencyType.MINUTE,
+            frequency=PH.Frequency.EVERY_FIVE_MINUTES,
+            need_extended_hours_data=False,
+        )
+        if start_datetime:
+            kwargs["start_datetime"] = start_datetime
+        else:
+            kwargs["period_type"] = PH.PeriodType.DAY
+            kwargs["period"] = PH.Period.TEN_DAYS
+
+        resp = _client.get_price_history(symbol, **kwargs)
+        resp.raise_for_status()
+        candles = resp.json().get("candles", [])
+
+        result = []
+        for c in candles:
+            ts = datetime.fromtimestamp(c["datetime"] / 1000)
+            result.append({
+                "timestamp": ts,
+                "close": float(c["close"]),
+                "volume": int(c["volume"]),
+            })
+        return result
+    except SchwabUnavailable:
+        raise
+    except Exception as e:
+        raise SchwabUnavailable(f"Schwab get_price_history_candles: {e}") from e
