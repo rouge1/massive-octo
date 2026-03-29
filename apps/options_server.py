@@ -158,6 +158,75 @@ class OptionsServer:
         except Exception as e:
             logger.error(f"Failed to create default user: {e}")
     
+    def _backfill_item(self, item_id: int):
+        """Backfill historical Schwab candles for a single watchlist item."""
+        session = self.db_manager.get_session()
+        try:
+            item = session.query(db.OptionsWatchlist).filter(
+                db.OptionsWatchlist.id == item_id
+            ).first()
+            if not item:
+                return
+
+            dte = (datetime.strptime(item.expiration, "%Y-%m-%d").date() - datetime.now().date()).days
+            label = f"{item.ticker} ${item.strike} {item.put_call} {dte}DTE"
+
+            # Fetch stock candles
+            stock_candles = {}
+            try:
+                raw = schwab_client.get_price_history_candles(item.ticker)
+                for c in raw:
+                    stock_candles[c["timestamp"]] = c["close"]
+                logger.debug(f"Backfill: loaded {item.ticker} stock prices ({len(raw)} points)")
+            except Exception as e:
+                logger.warning(f"Backfill: {item.ticker} stock failed: {e}")
+
+            # Fetch option candles
+            schwab_symbol = schwab_client._to_schwab_option_symbol(item.contract_symbol)
+            option_candles = schwab_client.get_price_history_candles(schwab_symbol)
+            if not option_candles:
+                logger.info(f"Backfill: {label} — 0 candles from Schwab")
+                return
+
+            existing = set(
+                row[0] for row in session.query(db.OptionSnapshot.timestamp)
+                .filter(db.OptionSnapshot.watchlist_id == item.id)
+                .all()
+            )
+
+            inserted = 0
+            skipped = 0
+            for candle in option_candles:
+                if candle["timestamp"] in existing:
+                    skipped += 1
+                    continue
+                stock_price = stock_candles.get(candle["timestamp"])
+                mid = candle["close"]
+                spread_pct = (
+                    (mid / stock_price) * 100
+                    if stock_price and stock_price > 0
+                    else None
+                )
+                snapshot = db.OptionSnapshot(
+                    watchlist_id=item.id,
+                    timestamp=candle["timestamp"],
+                    stock_price=stock_price,
+                    mid=mid,
+                    last_price=mid,
+                    volume=candle["volume"],
+                    spread_pct=spread_pct,
+                )
+                session.add(snapshot)
+                inserted += 1
+
+            session.commit()
+            logger.info(f"Backfill: {label} — {inserted} new from Schwab")
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Backfill failed for item {item_id}: {e}")
+        finally:
+            session.close()
+
     def _setup_routes(self):
         """Setup FastAPI routes"""
         
@@ -225,12 +294,22 @@ class OptionsServer:
                     )
                     session.add(item)
                     session.commit()
-                    
+
                     logger.info(f"Added to watchlist: {request.ticker} ${request.strike} {request.put_call}")
-                    return {"status": "added", "item": item.to_dict()}
-                
+                    result = {"status": "added", "item": item.to_dict()}
+                    item_id = item.id
+
                 finally:
                     session.close()
+
+                # Backfill historical data from Schwab
+                if schwab_client.is_available():
+                    try:
+                        self._backfill_item(item_id)
+                    except Exception as e:
+                        logger.warning(f"Backfill for new item failed: {e}")
+
+                return result
             except Exception as e:
                 logger.error(f"Error adding to watchlist: {e}")
                 raise HTTPException(status_code=500, detail=str(e))

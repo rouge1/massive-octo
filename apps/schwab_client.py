@@ -40,6 +40,11 @@ def _read_token():
 
 def _write_token(token, **kwargs):
     """Write the OAuth token to GNOME Keyring."""
+    # Log token keys (not values) to help diagnose missing refresh_token
+    inner = token.get("token", token) if isinstance(token, dict) else token
+    if isinstance(inner, dict):
+        has_refresh = "refresh_token" in inner
+        logger.info(f"Schwab token write — keys: {sorted(inner.keys())}, has_refresh_token: {has_refresh}")
     keyring.set_password(KEYRING_SERVICE, KEYRING_TOKEN_KEY, json.dumps(token))
 
 
@@ -300,6 +305,21 @@ def fetch_snapshot(ticker: str, expiration: str, strike: float, put_call: str) -
         "spread_pct": spread_pct,
         **option_data,
     }
+
+
+def _to_schwab_option_symbol(contract_symbol: str) -> str:
+    """Convert compact contract symbol to Schwab's padded format.
+
+    DB stores:   'AAPL260402C00270000'  (no spaces)
+    Schwab needs: 'AAPL  260402C00270000' (ticker padded to 6 chars)
+    """
+    # Split at the first digit — everything before is the ticker
+    for i, ch in enumerate(contract_symbol):
+        if ch.isdigit():
+            ticker = contract_symbol[:i]
+            rest = contract_symbol[i:]
+            return f"{ticker:<6}{rest}"
+    return contract_symbol
 
 
 def get_price_history_candles(symbol: str, start_datetime: datetime = None) -> list[dict]:

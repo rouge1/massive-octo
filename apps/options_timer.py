@@ -177,98 +177,118 @@ class OptionsTimer:
                 await asyncio.sleep(30)  # Wait before retrying on error
     
     async def _backfill_from_schwab(self):
-        """Pull historical 5-min candles from Schwab and insert missing snapshots."""
+        """Pull historical 5-min candles from Schwab for all active watchlist items."""
         session = self.db_manager.get_session()
         try:
             items = session.query(db.OptionsWatchlist).filter(
                 db.OptionsWatchlist.is_active == True
             ).all()
-
             if not items:
                 logger.info("Backfill: no active watchlist items")
                 return
-
-            total_inserted = 0
-
-            # Group by ticker so we fetch stock candles once per underlying
-            ticker_items = {}
-            for item in items:
-                ticker_items.setdefault(item.ticker, []).append(item)
-
-            for ticker, group in ticker_items.items():
-                # Fetch stock price candles for the underlying ticker
-                stock_candles = {}
-                try:
-                    raw = schwab_client.get_price_history_candles(ticker)
-                    for c in raw:
-                        stock_candles[c["timestamp"]] = c["close"]
-                    logger.info(f"Backfill: {ticker} stock — {len(raw)} candles")
-                except Exception as e:
-                    logger.warning(f"Backfill: failed stock history for {ticker}: {e}")
-
-                # Fetch option candles per contract and insert
-                for item in group:
-                    try:
-                        option_candles = schwab_client.get_price_history_candles(
-                            item.contract_symbol
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            f"Backfill: failed option history for "
-                            f"{item.contract_symbol}: {e}"
-                        )
-                        continue
-
-                    if not option_candles:
-                        continue
-
-                    # Load existing timestamps to avoid duplicates
-                    existing = set(
-                        row[0] for row in session.query(db.OptionSnapshot.timestamp)
-                        .filter(db.OptionSnapshot.watchlist_id == item.id)
-                        .all()
-                    )
-
-                    inserted = 0
-                    for candle in option_candles:
-                        if candle["timestamp"] in existing:
-                            continue
-
-                        stock_price = stock_candles.get(candle["timestamp"])
-                        mid = candle["close"]
-                        spread_pct = (
-                            (mid / stock_price) * 100
-                            if stock_price and stock_price > 0
-                            else None
-                        )
-
-                        snapshot = db.OptionSnapshot(
-                            watchlist_id=item.id,
-                            timestamp=candle["timestamp"],
-                            stock_price=stock_price,
-                            mid=mid,
-                            last_price=mid,
-                            volume=candle["volume"],
-                            spread_pct=spread_pct,
-                        )
-                        session.add(snapshot)
-                        inserted += 1
-
-                    if inserted:
-                        logger.info(
-                            f"Backfill: {item.ticker} ${item.strike} "
-                            f"{item.put_call} — {inserted} snapshots"
-                        )
-                    total_inserted += inserted
-
-            session.commit()
-            logger.info(f"Backfill complete: {total_inserted} snapshots inserted")
-
+            self._backfill_items(session, items)
         except Exception as e:
             session.rollback()
             logger.error(f"Backfill failed: {e}")
         finally:
             session.close()
+
+    def backfill_single_item(self, item_id: int):
+        """Backfill historical data for a single newly-added watchlist item."""
+        if not schwab_client.is_available():
+            return
+        session = self.db_manager.get_session()
+        try:
+            item = session.query(db.OptionsWatchlist).filter(
+                db.OptionsWatchlist.id == item_id
+            ).first()
+            if item:
+                self._backfill_items(session, [item])
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Backfill single item failed: {e}")
+        finally:
+            session.close()
+
+    def _backfill_items(self, session, items):
+        """Core backfill logic — fetch Schwab candles and insert missing snapshots."""
+        total_inserted = 0
+
+        # Group by ticker so we fetch stock candles once per underlying
+        ticker_items = {}
+        for item in items:
+            ticker_items.setdefault(item.ticker, []).append(item)
+
+        for ticker, group in ticker_items.items():
+            # Fetch stock price candles for the underlying ticker
+            stock_candles = {}
+            try:
+                raw = schwab_client.get_price_history_candles(ticker)
+                for c in raw:
+                    stock_candles[c["timestamp"]] = c["close"]
+                logger.debug(f"Backfill: loaded {ticker} stock prices ({len(raw)} points)")
+            except Exception as e:
+                logger.warning(f"Backfill: failed stock history for {ticker}: {e}")
+
+            # Fetch option candles per contract and insert
+            for item in group:
+                dte = options_api.calculate_dte(item.expiration)
+                label = f"{item.ticker} ${item.strike} {item.put_call} {dte}DTE"
+
+                try:
+                    schwab_symbol = schwab_client._to_schwab_option_symbol(
+                        item.contract_symbol
+                    )
+                    option_candles = schwab_client.get_price_history_candles(
+                        schwab_symbol
+                    )
+                except Exception as e:
+                    logger.warning(f"Backfill: {label} — failed: {e}")
+                    continue
+
+                if not option_candles:
+                    logger.info(f"Backfill: {label} — 0 candles from Schwab")
+                    continue
+
+                # Load existing timestamps to avoid duplicates
+                existing = set(
+                    row[0] for row in session.query(db.OptionSnapshot.timestamp)
+                    .filter(db.OptionSnapshot.watchlist_id == item.id)
+                    .all()
+                )
+
+                inserted = 0
+                skipped = 0
+                for candle in option_candles:
+                    if candle["timestamp"] in existing:
+                        skipped += 1
+                        continue
+
+                    stock_price = stock_candles.get(candle["timestamp"])
+                    mid = candle["close"]
+                    spread_pct = (
+                        (mid / stock_price) * 100
+                        if stock_price and stock_price > 0
+                        else None
+                    )
+
+                    snapshot = db.OptionSnapshot(
+                        watchlist_id=item.id,
+                        timestamp=candle["timestamp"],
+                        stock_price=stock_price,
+                        mid=mid,
+                        last_price=mid,
+                        volume=candle["volume"],
+                        spread_pct=spread_pct,
+                    )
+                    session.add(snapshot)
+                    inserted += 1
+
+                logger.info(f"Backfill: {label} — {inserted} new from Schwab")
+                total_inserted += inserted
+
+        session.commit()
+        logger.info(f"Backfill complete: {total_inserted} snapshots inserted")
 
     def get_watchlist(self) -> list[dict]:
         """
@@ -336,14 +356,19 @@ class OptionsTimer:
             session.commit()
             
             logger.info(f"Added to watchlist: {ticker} ${strike} {put_call} exp:{expiration}")
-            return {'status': 'added', 'item': item.to_dict()}
-        
+            result = {'status': 'added', 'item': item.to_dict()}
+            item_id = item.id
+
         except Exception as e:
             session.rollback()
             logger.error(f"Error adding to watchlist: {e}")
             return {'error': str(e)}
         finally:
             session.close()
+
+        # Backfill historical data for the newly added item
+        self.backfill_single_item(item_id)
+        return result
     
     def remove_from_watchlist(self, item_id: int = None, contract_symbol: str = None, 
                                hard_delete: bool = False) -> dict:

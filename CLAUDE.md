@@ -207,6 +207,8 @@ Single horizontal row: `[ TICKER ] [ CALL | PUT ] [ Strike ▾ ] [ DTE ▾ ] [ +
 - Theme switcher in header (4 themes, persisted in localStorage)
 - Watchlist persistence (MySQL via SQLAlchemy ORM, survives restart)
 - DB credential pre-fill — both PyQt5 GUIs remember last successful user/database on reopen
+- Historical backfill — Schwab `get_price_history` fills ~10 days of 5-min candle data on startup and on new item add
+- Token validation — `init()` verifies Schwab token with live API call; GUI accurately reflects expired state
 
 ## Implementation Status
 - [x] FastAPI backend with REST endpoints
@@ -222,6 +224,8 @@ Single horizontal row: `[ TICKER ] [ CALL | PUT ] [ Strike ▾ ] [ DTE ▾ ] [ +
 - [x] Date navigation (←/→) with market-hours-pinned chart x-axis
 - [x] DB credential pre-fill from last successful login
 - [x] Schwab API card — multi-state Save/Authorize/Delete flow with GNOME Keyring storage
+- [x] Schwab historical backfill — pulls ~10 days of 5-min candles on startup + when adding new items
+- [x] Schwab token validation — `init()` verifies token with a live API call, shows expired status correctly
 - [ ] Browser notifications for spread alerts
 - [ ] CSV export
 
@@ -233,8 +237,10 @@ Schwab credentials are stored in GNOME Keyring under service `options-tracker-sc
 - `gm.save_schwab_credentials(client_id, client_secret)` — saves to keyring
 - `gm.get_schwab_credentials()` — returns `{client_id, client_secret}`
 - `gm.delete_schwab_credentials()` — removes all three keys (client_id, client_secret, oauth_token)
-- `schwab_client.init(client_id, client_secret)` — loads token from keyring, sets `_client`
+- `schwab_client.init(client_id, client_secret)` — loads token from keyring, validates with live API call, sets `_client` (None if token invalid)
 - `schwab_client.get_status()` → `not_configured | token_missing | token_expired | authorized`
+- `schwab_client._to_schwab_option_symbol(contract_symbol)` — converts DB format to Schwab padded format
+- `schwab_client.get_price_history_candles(symbol, start_datetime=None)` — fetches 5-min OHLCV candles (~10 days)
 - `schwab_client.get_auth_url(client_id)` — returns OAuth URL to open in browser
 - `schwab_client.complete_auth(client_id, client_secret, received_url)` — exchanges code, saves token
 - `schwab_client.reset()` — clears in-memory client (call after `delete_schwab_credentials`)
@@ -261,7 +267,43 @@ secret-tool lookup service options-tracker-schwab username client_id
 ### GNOME Keyring security model
 `secret-tool` and any process running as your user can read secrets without re-prompting — this is by design. The keyring unlocks automatically with your desktop login session. Protection is at the OS user level (other users cannot read it). Credentials are never written to disk as plaintext, which is the main win over config files that might be accidentally committed to git.
 
+### Schwab developer portal requirements
+The Schwab app must have **Accounts and Trading Production** API enabled (not just Market Data Production) to receive refresh tokens. Without it, OAuth returns only an `access_token` (1-hour TTL, no auto-renewal). App changes require manual Schwab review (1-2 days).
+
+## Historical Backfill (Schwab)
+
+On watcher startup (and when adding new items via the web UI), the system backfills ~10 trading days of 5-minute candle data from Schwab's `get_price_history` API.
+
+### How it works
+1. **Startup**: `OptionsTimer.run()` calls `_backfill_from_schwab()` once after DB + Schwab are both available
+2. **New item**: `OptionsServer._backfill_item()` runs immediately after `POST /api/watchlist` adds a contract
+3. Stock price candles are fetched once per ticker (grouped), option candles per contract symbol
+4. Deduplication: existing timestamps are loaded into a set; only new timestamps are inserted
+
+### Field mapping (candle → option_snapshots)
+| Schwab candle | DB column | Notes |
+|---|---|---|
+| `close` (option contract) | `mid`, `last_price` | Only price available from candles |
+| `close` (stock ticker) | `stock_price` | Separate API call per underlying |
+| `volume` | `volume` | Option contract volume |
+| computed | `spread_pct` | `(mid / stock_price) * 100` |
+| — | `bid`, `ask`, `open_interest`, `implied_volatility` | NULL (not in candle data) |
+
+### Token validation on init
+`schwab_client.init()` makes a lightweight `get_market_hours(EQUITY)` call after loading the client. If it fails, `_client` is set to `None` so the GUI correctly shows "Token expired" instead of falsely showing "Authorized".
+
 ## Common Pitfalls & Solutions
+
+### Schwab Option Symbol Padding
+Schwab API requires option contract symbols with the ticker padded to 6 characters:
+- DB stores: `'AAPL260402C00270000'` (compact, no spaces)
+- Schwab needs: `'AAPL  260402C00270000'` (ticker padded to 6 chars with spaces)
+
+Always convert with `schwab_client._to_schwab_option_symbol()` before passing DB contract symbols to any Schwab API call. Without this, calls succeed but return empty data (0 candles, no error).
+```python
+schwab_symbol = schwab_client._to_schwab_option_symbol(item.contract_symbol)
+candles = schwab_client.get_price_history_candles(schwab_symbol)
+```
 
 ### yfinance + JSON Serialization
 yfinance returns numpy types (`int64`, `float64`) that aren't JSON serializable. Always convert before sending over SSE/REST:
