@@ -11,7 +11,9 @@ Polling intervals:
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+
+import yfinance as yf
 
 import apps.database as db
 import apps.options_api as options_api
@@ -85,10 +87,13 @@ class OptionsTimer:
                     logger.info("Database connection detected - starting options polling")
                     self._db_not_connected_logged = False
 
-                # One-time backfill from Schwab history
-                if not self._backfill_done and schwab_client.is_available():
-                    await self._backfill_from_schwab()
-                    self._backfill_done = True
+                    # One-time backfill from Schwab history
+                    if not self._backfill_done and schwab_client.is_available():
+                        await self._backfill_from_schwab()
+                        self._backfill_done = True
+
+                    # Fill any stock price gaps (runs after Schwab backfill)
+                    await self._fill_stock_gaps()
 
                 # Get active watchlist items
                 session = self.db_manager.get_session()
@@ -176,6 +181,122 @@ class OptionsTimer:
                 logger.error(f"Error in options timer loop: {e}")
                 await asyncio.sleep(30)  # Wait before retrying on error
     
+    async def _fill_stock_gaps(self):
+        """Scan today's snapshots for gaps > 2min and fill with yfinance stock prices."""
+        market = options_api.is_market_open()
+        if not market["is_open"]:
+            return
+
+        session = self.db_manager.get_session()
+        try:
+            items = session.query(db.OptionsWatchlist).filter(
+                db.OptionsWatchlist.is_active == True
+            ).all()
+            if not items:
+                return
+
+            today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+            # Group by ticker — fetch yfinance once per underlying
+            ticker_items = {}
+            for item in items:
+                ticker_items.setdefault(item.ticker, []).append(item)
+
+            total_inserted = 0
+            for ticker, group in ticker_items.items():
+                # Collect today's timestamps across all items for this ticker
+                # to find gaps in coverage
+                all_timestamps = set()
+                for item in group:
+                    rows = session.query(db.OptionSnapshot.timestamp).filter(
+                        db.OptionSnapshot.watchlist_id == item.id,
+                        db.OptionSnapshot.timestamp >= today_start,
+                    ).all()
+                    for row in rows:
+                        all_timestamps.add(row[0])
+
+                if len(all_timestamps) < 2:
+                    continue
+
+                # Sort and find gaps > 2 minutes (internal + trailing)
+                sorted_ts = sorted(all_timestamps)
+                gap_ranges = []
+                for i in range(1, len(sorted_ts)):
+                    delta = (sorted_ts[i] - sorted_ts[i - 1]).total_seconds() / 60
+                    if delta > 2:
+                        gap_ranges.append((sorted_ts[i - 1], sorted_ts[i], delta))
+
+                # Also check trailing gap (last snapshot → now)
+                trailing = (datetime.now() - sorted_ts[-1]).total_seconds() / 60
+                if trailing > 2:
+                    gap_ranges.append((sorted_ts[-1], datetime.now(), trailing))
+
+                if not gap_ranges:
+                    continue
+
+                # Fetch yfinance 1-min stock candles for today
+                try:
+                    stock = yf.Ticker(ticker)
+                    hist = stock.history(period="1d", interval="1m")
+                    if hist.empty:
+                        continue
+                    # Strip timezone for comparison
+                    hist.index = hist.index.tz_localize(None)
+                except Exception as e:
+                    logger.warning(f"Gap-fill: yfinance failed for {ticker}: {e}")
+                    continue
+
+                # For each gap, find yfinance candles that fall within it
+                for gap_start, gap_end, gap_min in gap_ranges:
+                    candles_in_gap = hist[
+                        (hist.index > gap_start) & (hist.index < gap_end)
+                    ]
+                    if candles_in_gap.empty:
+                        continue
+
+                    for item in group:
+                        existing = set(
+                            row[0] for row in session.query(db.OptionSnapshot.timestamp)
+                            .filter(
+                                db.OptionSnapshot.watchlist_id == item.id,
+                                db.OptionSnapshot.timestamp > gap_start,
+                                db.OptionSnapshot.timestamp < gap_end,
+                            ).all()
+                        )
+
+                        inserted = 0
+                        for ts, row in candles_in_gap.iterrows():
+                            candle_ts = ts.to_pydatetime().replace(tzinfo=None)
+                            if candle_ts in existing:
+                                continue
+                            snapshot = db.OptionSnapshot(
+                                watchlist_id=item.id,
+                                timestamp=candle_ts,
+                                stock_price=float(row["Close"]),
+                            )
+                            session.add(snapshot)
+                            inserted += 1
+
+                        total_inserted += inserted
+
+                    logger.info(
+                        f"Gap-fill: {ticker} {gap_start.strftime('%H:%M')}-"
+                        f"{gap_end.strftime('%H:%M')} ({gap_min:.0f}min) — "
+                        f"{len(candles_in_gap)} stock candles"
+                    )
+
+            session.commit()
+            if total_inserted:
+                logger.info(f"Gap-fill complete: {total_inserted} stock-price snapshots inserted")
+            else:
+                logger.info("Gap-fill: no gaps found")
+
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Gap-fill failed: {e}")
+        finally:
+            session.close()
+
     async def _backfill_from_schwab(self):
         """Pull historical 5-min candles from Schwab for all active watchlist items."""
         session = self.db_manager.get_session()

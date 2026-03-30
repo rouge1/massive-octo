@@ -208,7 +208,10 @@ Single horizontal row: `[ TICKER ] [ CALL | PUT ] [ Strike ▾ ] [ DTE ▾ ] [ +
 - Watchlist persistence (MySQL via SQLAlchemy ORM, survives restart)
 - DB credential pre-fill — both PyQt5 GUIs remember last successful user/database on reopen
 - Historical backfill — Schwab `get_price_history` fills ~10 days of 5-min candle data on startup and on new item add
-- Token validation — `init()` verifies Schwab token with live API call; GUI accurately reflects expired state
+- Stock price gap-fill — yfinance 1-min candles fill gaps after DB reconnections; chart auto-refreshes
+- Token validation — `init()` verifies Schwab token with live API call; GUI polls status every 60s
+- Graceful token expiry — disables Schwab on first `token_invalid`, silently falls back to yfinance
+- Schwab callback URL persistence — saved to `watcher_settings.json`, pre-filled on restart
 
 ## Implementation Status
 - [x] FastAPI backend with REST endpoints
@@ -226,6 +229,10 @@ Single horizontal row: `[ TICKER ] [ CALL | PUT ] [ Strike ▾ ] [ DTE ▾ ] [ +
 - [x] Schwab API card — multi-state Save/Authorize/Delete flow with GNOME Keyring storage
 - [x] Schwab historical backfill — pulls ~10 days of 5-min candles on startup + when adding new items
 - [x] Schwab token validation — `init()` verifies token with a live API call, shows expired status correctly
+- [x] Stock price gap-fill — yfinance 1-min candles fill intraday gaps on DB reconnection
+- [x] Chart auto-refresh — periodic re-fetch detects backfill/gap-fill inserts while row is expanded
+- [x] Graceful Schwab token expiry — disables client, falls back to yfinance, GUI updates within 60s
+- [x] Schwab callback URL saved to settings and pre-filled on restart
 - [ ] Browser notifications for spread alerts
 - [ ] CSV export
 
@@ -241,6 +248,7 @@ Schwab credentials are stored in GNOME Keyring under service `options-tracker-sc
 - `schwab_client.get_status()` → `not_configured | token_missing | token_expired | authorized`
 - `schwab_client._to_schwab_option_symbol(contract_symbol)` — converts DB format to Schwab padded format
 - `schwab_client.get_price_history_candles(symbol, start_datetime=None)` — fetches 5-min OHLCV candles (~10 days)
+- `schwab_client._handle_token_error(error)` — disables client on `token_invalid` errors (stops retry spam)
 - `schwab_client.get_auth_url(client_id)` — returns OAuth URL to open in browser
 - `schwab_client.complete_auth(client_id, client_secret, received_url)` — exchanges code, saves token
 - `schwab_client.reset()` — clears in-memory client (call after `delete_schwab_credentials`)
@@ -291,6 +299,26 @@ On watcher startup (and when adding new items via the web UI), the system backfi
 
 ### Token validation on init
 `schwab_client.init()` makes a lightweight `get_market_hours(EQUITY)` call after loading the client. If it fails, `_client` is set to `None` so the GUI correctly shows "Token expired" instead of falsely showing "Authorized".
+
+### Graceful token expiry mid-session
+When a Schwab API call fails with `token_invalid`, `_handle_token_error()` sets `_client = None` so all subsequent calls silently use yfinance instead of retrying Schwab every 30 seconds. The GUI polls `get_status()` every 60 seconds via a `QTimer`, so the orb/button update automatically. Re-authorizing via the GUI calls `init()` which restores `_client`.
+
+## Stock Price Gap-Fill (yfinance)
+
+On DB reconnection during market hours, `_fill_stock_gaps()` scans today's snapshots for gaps > 2 minutes and fills them with yfinance 1-minute stock price candles.
+
+### How it works
+1. Runs after Schwab backfill on every DB reconnection (during market hours)
+2. Groups watchlist items by ticker, collects all timestamps for today
+3. Finds both **internal gaps** (between consecutive snapshots) and **trailing gaps** (last snapshot → now)
+4. Fetches yfinance `history(period="1d", interval="1m")` once per ticker
+5. Inserts stock-price-only snapshots (option fields NULL) for candles within each gap
+6. Frontend auto-detects new data within 60 seconds and reloads the chart
+
+### What it can and cannot fill
+- **Stock price**: fully recoverable at 1-min resolution from yfinance
+- **Option bid/ask/mid/IV**: NOT recoverable — these come from live option chain quotes, not historical trades. If the watcher is off, this data is permanently lost
+- **Option last trade**: only available at 5-min resolution from Schwab candles (sparse, trade-dependent)
 
 ## Common Pitfalls & Solutions
 

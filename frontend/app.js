@@ -646,24 +646,22 @@ function Chart({ data, selectedDate }) {
             },
             {
                 x: timestamps,
+                y: stockPrices,
+                name: 'Stock Price',
+                type: 'scatter',
+                mode: 'lines',
+                line: { color: colors.stock, width: 1.5 },
+                yaxis: 'y2'
+            },
+            {
+                x: timestamps,
                 y: lasts,
                 name: 'Last Trade',
                 type: 'scatter',
                 mode: 'markers',
-                line: { color: '#00aaff', width: 2, dash: 'dot' },
-                marker: { size: 5, color: '#00aaff' },
+                marker: { size: 7, color: '#00aaff' },
                 connectgaps: false,
                 yaxis: 'y'
-            },
-            {
-                x: timestamps,
-                y: stockPrices,
-                name: 'Stock Price',
-                type: 'scatter',
-                mode: 'lines+markers',
-                line: { color: colors.stock, width: 2 },
-                marker: { size: 6 },
-                yaxis: 'y2'
             }
         ];
 
@@ -1079,6 +1077,24 @@ function WatchlistRow({ item, onRemove }) {
             } catch(e) {}
         };
         return () => sse.close();
+    }, [expanded, item.id]);
+
+    // Periodic re-fetch: detect backfill/gap-fill inserts and reload chart data
+    useEffect(() => {
+        if (!expanded) return;
+        const countRef = { current: historyData.length };
+        const interval = setInterval(async () => {
+            try {
+                const res = await fetch(`${API_BASE}/api/snapshots/${item.id}?limit=5000`);
+                const raw = await res.json();
+                if (raw.length !== countRef.current) {
+                    countRef.current = raw.length;
+                    const mapped = raw.map(mapSnapshot).reverse();
+                    setHistoryData(mapped);
+                }
+            } catch(e) {}
+        }, 60000);
+        return () => clearInterval(interval);
     }, [expanded, item.id]);
 
     const handleRemove = (e) => {

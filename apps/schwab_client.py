@@ -52,6 +52,15 @@ class SchwabUnavailable(Exception):
     pass
 
 
+def _handle_token_error(error):
+    """If the error is a token/auth failure, disable the client to stop retrying."""
+    global _client
+    err_str = str(error).lower()
+    if "token_invalid" in err_str or "token_expired" in err_str or "refresh_token" in err_str:
+        logger.warning("Schwab token invalid — disabling client until re-authorized")
+        _client = None
+
+
 # ---------------------------------------------------------------------------
 # Init / status
 # ---------------------------------------------------------------------------

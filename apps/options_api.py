@@ -34,49 +34,45 @@ if not logger.handlers:
 # Public API — Schwab-first with yfinance fallback
 # ---------------------------------------------------------------------------
 
-def list_available_strikes(ticker: str, put_call: str) -> list[float]:
+def _schwab_with_fallback(schwab_fn, yf_fn, *args):
+    """Try Schwab first; on failure, disable client if token error and fall back to yfinance."""
     if schwab_client.is_available():
         try:
-            return schwab_client.list_available_strikes(ticker, put_call)
+            return schwab_fn(*args)
         except Exception as e:
+            schwab_client._handle_token_error(e)
             logger.warning(f"Schwab failed, falling back to yfinance: {e}")
-    return _yf_list_available_strikes(ticker, put_call)
+    return yf_fn(*args)
+
+
+def list_available_strikes(ticker: str, put_call: str) -> list[float]:
+    return _schwab_with_fallback(
+        schwab_client.list_available_strikes, _yf_list_available_strikes,
+        ticker, put_call)
 
 
 def list_available_contracts(ticker: str, strike: float, put_call: str) -> list[dict]:
-    if schwab_client.is_available():
-        try:
-            return schwab_client.list_available_contracts(ticker, strike, put_call)
-        except Exception as e:
-            logger.warning(f"Schwab failed, falling back to yfinance: {e}")
-    return _yf_list_available_contracts(ticker, strike, put_call)
+    return _schwab_with_fallback(
+        schwab_client.list_available_contracts, _yf_list_available_contracts,
+        ticker, strike, put_call)
 
 
 def get_stock_price(ticker: str) -> Optional[float]:
-    if schwab_client.is_available():
-        try:
-            return schwab_client.get_stock_price(ticker)
-        except Exception as e:
-            logger.warning(f"Schwab failed, falling back to yfinance: {e}")
-    return _yf_get_stock_price(ticker)
+    return _schwab_with_fallback(
+        schwab_client.get_stock_price, _yf_get_stock_price,
+        ticker)
 
 
 def get_option_data(ticker: str, expiration: str, strike: float, put_call: str) -> Optional[dict]:
-    if schwab_client.is_available():
-        try:
-            return schwab_client.get_option_data(ticker, expiration, strike, put_call)
-        except Exception as e:
-            logger.warning(f"Schwab failed, falling back to yfinance: {e}")
-    return _yf_get_option_data(ticker, expiration, strike, put_call)
+    return _schwab_with_fallback(
+        schwab_client.get_option_data, _yf_get_option_data,
+        ticker, expiration, strike, put_call)
 
 
 def fetch_snapshot(ticker: str, expiration: str, strike: float, put_call: str) -> Optional[dict]:
-    if schwab_client.is_available():
-        try:
-            return schwab_client.fetch_snapshot(ticker, expiration, strike, put_call)
-        except Exception as e:
-            logger.warning(f"Schwab failed, falling back to yfinance: {e}")
-    return _yf_fetch_snapshot(ticker, expiration, strike, put_call)
+    return _schwab_with_fallback(
+        schwab_client.fetch_snapshot, _yf_fetch_snapshot,
+        ticker, expiration, strike, put_call)
 
 
 # ---------------------------------------------------------------------------

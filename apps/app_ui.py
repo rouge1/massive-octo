@@ -7,7 +7,7 @@ from datetime import datetime
 from PIL import Image, ImageEnhance
 import io
 
-from PyQt5.QtCore import QThread, pyqtSignal, QPoint, Qt, QSize, QPropertyAnimation, QEasingCurve
+from PyQt5.QtCore import QThread, pyqtSignal, QPoint, Qt, QSize, QPropertyAnimation, QEasingCurve, QTimer
 from PyQt5.QtGui import QFont, QIcon, QPixmap, QTextCharFormat, QTextCursor, QColor
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QTextEdit, QStatusBar, QPushButton,
@@ -292,9 +292,9 @@ class Main_App_Window(QMainWindow):
         self.schwab_secret_field.setEchoMode(QLineEdit.Password)
         self.schwab_secret_field.setPlaceholderText("Put your Charles Schwab Secret here")
 
-        self.schwab_auth_url_field = QLineEdit()
+        saved_callback = gm.get_settings().get('schwab', {}).get('callback_url', '')
+        self.schwab_auth_url_field = QLineEdit(saved_callback)
         self.schwab_auth_url_field.setFont(QFont("Arial", 12))
-        self.schwab_auth_url_field.setEchoMode(QLineEdit.Password)
         self.schwab_auth_url_field.setPlaceholderText("Put your redirected Charles Schwab URL here (i.e. https://127.0.0.1:9090/callback?code=...)")
 
         id_label = QLabel("Client ID:")
@@ -361,6 +361,11 @@ class Main_App_Window(QMainWindow):
         # Reflect current status
         self.update_schwab_status()
 
+        # Periodically refresh Schwab status (catches mid-session token expiry)
+        self._schwab_status_timer = QTimer(self)
+        self._schwab_status_timer.timeout.connect(self.update_schwab_status)
+        self._schwab_status_timer.start(60_000)  # every 60 seconds
+
     def update_schwab_status(self):
         """Update the Schwab status orb, label, and buttons based on client state."""
         status = schwab_client.get_status()
@@ -399,13 +404,10 @@ class Main_App_Window(QMainWindow):
         # Delete button: enabled unless nothing is configured
         self.schwab_delete_btn.setEnabled(status != "not_configured")
 
-        # Auth URL field — always Password mode; mask content when authorized
+        # Auth URL field — show saved callback URL; read-only when authorized
         if status == "authorized":
-            self.schwab_auth_url_field.setText("authorized")
             self.schwab_auth_url_field.setReadOnly(True)
         else:
-            if self.schwab_auth_url_field.isReadOnly():
-                self.schwab_auth_url_field.clear()
             self.schwab_auth_url_field.setReadOnly(False)
 
     def schwab_info_clicked(self):
@@ -474,6 +476,7 @@ class Main_App_Window(QMainWindow):
         success = schwab_client.complete_auth(client_id, client_secret, received_url)
         self.update_schwab_status()
         if success:
+            gm.save_settings(schwab_callback_url=received_url)
             logger.info("Schwab authorization complete")
         else:
             logger.error("Schwab authorization failed — check logs for details")

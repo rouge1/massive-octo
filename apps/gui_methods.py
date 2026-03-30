@@ -65,7 +65,7 @@ def convert_seconds_to_human_readable(seconds):
         return f"{days} day{'s' if days > 1 else ''}"
 
 
-def save_settings(x=None, y=None, width=None, height=None, headless=None, screenshot_viewer=None, domain_name=None, port=None, browser_x=None, browser_y=None, browser_width=None, browser_height=None, start_time=None, db_user=None, db_name=None):
+def save_settings(x=None, y=None, width=None, height=None, headless=None, screenshot_viewer=None, domain_name=None, port=None, browser_x=None, browser_y=None, browser_width=None, browser_height=None, start_time=None, db_user=None, db_name=None, schwab_callback_url=None):
     """Save window and browser settings to config file (nested structure)
 
     Args:
@@ -120,6 +120,12 @@ def save_settings(x=None, y=None, width=None, height=None, headless=None, screen
             settings['database']['user'] = db_user
         if db_name is not None:
             settings['database']['name'] = db_name
+
+    # Update Schwab callback URL
+    if schwab_callback_url is not None:
+        if 'schwab' not in settings:
+            settings['schwab'] = {}
+        settings['schwab']['callback_url'] = schwab_callback_url
 
     # Save updated settings
     try:
