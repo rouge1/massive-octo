@@ -366,6 +366,9 @@ class Main_App_Window(QMainWindow):
         self.schwab_card.hide()
         parent_layout.addWidget(self.schwab_card)
 
+        # Track previous status for transition detection
+        self._prev_schwab_status = None
+
         # Reflect current status
         self.update_schwab_status()
 
@@ -377,6 +380,20 @@ class Main_App_Window(QMainWindow):
     def update_schwab_status(self):
         """Update the Schwab status orb, label, and buttons based on client state."""
         status = schwab_client.get_status()
+
+        # Detect status transitions and log them
+        prev = self._prev_schwab_status
+        if prev is not None and status != prev:
+            if prev == "authorized" and status == "token_expired":
+                logger.warning("Schwab token expired — falling back to yfinance")
+            elif prev == "authorized" and status == "not_configured":
+                logger.warning("Schwab credentials removed — falling back to yfinance")
+            elif status == "authorized" and prev != "authorized":
+                logger.info("Schwab API connected — using Schwab for data")
+            elif status == "token_expired":
+                logger.warning("Schwab token expired — click Authorize to reconnect")
+            self._write_data_source()
+        self._prev_schwab_status = status
 
         # Orb + label
         if status == "authorized":
@@ -506,6 +523,7 @@ class Main_App_Window(QMainWindow):
                                 "Paste the callback URL from your browser into the Auth URL field.")
             return
         success = schwab_client.complete_auth(client_id, client_secret, received_url)
+        self._write_data_source()
         self.update_schwab_status()
         if success:
             gm.save_settings(schwab_callback_url=received_url)
@@ -513,9 +531,24 @@ class Main_App_Window(QMainWindow):
         else:
             logger.error("Schwab authorization failed — check logs for details")
 
+    def _write_data_source(self):
+        """Write current data source to website_settings.json so the web server can read it."""
+        try:
+            import json, os
+            settings_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'website_settings.json')
+            if os.path.exists(settings_path):
+                with open(settings_path, 'r') as f:
+                    ws = json.load(f)
+                ws['data_source'] = 'schwab' if schwab_client.is_available() else 'yfinance'
+                with open(settings_path, 'w') as f:
+                    json.dump(ws, f, indent=2)
+        except Exception as e:
+            logger.debug(f"Failed to write data_source: {e}")
+
     def schwab_disconnect_clicked(self):
         """Drop the in-memory Schwab client — falls back to yfinance without deleting credentials."""
         schwab_client.disconnect()
+        self._write_data_source()
         self.update_schwab_status()
         logger.info("Schwab disconnected — falling back to yfinance")
 
@@ -524,6 +557,7 @@ class Main_App_Window(QMainWindow):
         creds = gm.get_schwab_credentials()
         if creds and creds.get('client_id') and creds.get('client_secret'):
             schwab_client.init(creds['client_id'], creds['client_secret'])
+            self._write_data_source()
             self.update_schwab_status()
             if schwab_client.is_available():
                 logger.info("Schwab reconnected")
@@ -544,6 +578,7 @@ class Main_App_Window(QMainWindow):
             return
         gm.delete_schwab_credentials()
         schwab_client.reset()
+        self._write_data_source()
         self.schwab_id_field.clear()
         self.schwab_secret_field.clear()
         self.schwab_auth_url_field.clear()
