@@ -400,7 +400,15 @@ class OptionsServer:
             """Check if market is open"""
             try:
                 status = options_api.is_market_open()
-                status["data_source"] = "schwab" if schwab_client.is_available() else "yfinance"
+                # Read data source from shared settings (written by watcher)
+                import json, os
+                settings_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'website_settings.json')
+                try:
+                    with open(settings_path, 'r') as f:
+                        ws = json.load(f)
+                    status["data_source"] = ws.get("data_source", "yfinance")
+                except Exception:
+                    status["data_source"] = "yfinance"
                 return status
             except Exception as e:
                 logger.error(f"Error checking market status: {e}")

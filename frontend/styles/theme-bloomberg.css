@@ -109,12 +109,12 @@
 [data-theme="bloomberg"] .form-input,
 [data-theme="bloomberg"] .form-select {
     padding: var(--space-xs) var(--space-sm);
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
 }
 
 [data-theme="bloomberg"] .btn {
     padding: var(--space-xs) var(--space-sm);
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
 }
 
 /* Watchlist table - Terminal precision */
@@ -141,6 +141,10 @@
 [data-theme="bloomberg"] .watchlist-table tbody tr:hover {
     background: var(--bg-hover);
     border-left: 2px solid var(--accent-primary);
+}
+
+[data-theme="bloomberg"] .watchlist-table th {
+    color: #ffffff;
 }
 
 [data-theme="bloomberg"] .cell-ticker {

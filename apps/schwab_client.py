@@ -114,6 +114,12 @@ def is_available() -> bool:
     return _client is not None
 
 
+def disconnect():
+    """Drop the active client — falls back to yfinance. Credentials stay in keyring."""
+    global _client
+    _client = None
+
+
 def reset():
     """Clear the in-memory client after credentials are deleted."""
     global _client, _client_id, _client_secret

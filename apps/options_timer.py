@@ -167,7 +167,20 @@ class OptionsTimer:
                     
                     if success_count > 0:
                         logger.info(f"Stored {success_count} snapshots ({error_count} errors) - Market: {market_status['status']}")
-                    
+
+                    # Write active data source to shared settings so the web server can read it
+                    try:
+                        import json, os
+                        settings_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'website_settings.json')
+                        if os.path.exists(settings_path):
+                            with open(settings_path, 'r') as f:
+                                ws = json.load(f)
+                            ws['data_source'] = 'schwab' if schwab_client.is_available() else 'yfinance'
+                            with open(settings_path, 'w') as f:
+                                json.dump(ws, f, indent=2)
+                    except Exception:
+                        pass
+
                 finally:
                     session.close()
                 

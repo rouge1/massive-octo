@@ -30,8 +30,12 @@ function useTheme() {
 // Chart colors by theme
 const chartColors = {
     bloomberg: {
-        premium: '#00ff00',
+        bid: '#00cc00',
+        ask: '#00cc00',
+        bandFill: 'rgba(0, 255, 0, 0.12)',
+        mid: '#00ff00',
         stock: '#ffb000',
+        lastTrade: '#00aaff',
         spread: '#ff3333',
         grid: '#222222',
         bg: '#111111',
@@ -39,8 +43,12 @@ const chartColors = {
         hoverlabel: { bgcolor: '#111111', font: { color: '#ffffff' } }
     },
     fintech: {
-        premium: '#10b981',
-        stock: '#06b6d4',
+        bid: '#10b981',
+        ask: '#10b981',
+        bandFill: 'rgba(16, 185, 129, 0.15)',
+        mid: '#10b981',
+        stock: '#a78bfa',
+        lastTrade: '#f59e0b',
         spread: '#ef4444',
         grid: '#2a2a38',
         bg: '#1c1c26',
@@ -48,8 +56,12 @@ const chartColors = {
         hoverlabel: { bgcolor: '#1c1c26', font: { color: '#ffffff' } }
     },
     retro: {
-        premium: '#ffd700',
+        bid: '#c9a800',
+        ask: '#c9a800',
+        bandFill: 'rgba(255, 215, 0, 0.1)',
+        mid: '#ffd700',
         stock: '#39ff14',
+        lastTrade: '#00aaff',
         spread: '#ff3366',
         grid: '#1a1a40',
         bg: '#12122e',
@@ -57,8 +69,12 @@ const chartColors = {
         hoverlabel: { bgcolor: '#12122e', font: { color: '#ffd700' } }
     },
     swiss: {
-        premium: '#ff0000',
+        bid: '#cc0000',
+        ask: '#cc0000',
+        bandFill: 'rgba(255, 0, 0, 0.08)',
+        mid: '#ff0000',
         stock: '#000000',
+        lastTrade: '#3b82f6',
         spread: '#888888',
         grid: '#dddddd',
         bg: '#ffffff',
@@ -615,7 +631,7 @@ function MetricsGrid({ data }) {
 }
 
 // Chart Component
-function Chart({ data, selectedDate }) {
+const Chart = React.memo(function Chart({ data, selectedDate }) {
     const chartRef = useRef(null);
     const { theme } = useTheme();
     const colors = chartColors[theme];
@@ -624,26 +640,45 @@ function Chart({ data, selectedDate }) {
         if (!chartRef.current || data.length === 0) return;
 
         const timestamps = data.map(d => new Date(d.timestamp));
-        const premiums = data.map(d => d.premium);
+        const mids = data.map(d => d.premium);
         const lasts = data.map(d => d.option_data ? d.option_data.last : null);
         const stockPrices = data.map(d => d.stock_price);
 
+        const bids = data.map(d => d.option_data ? d.option_data.bid : null);
+        const asks = data.map(d => d.option_data ? d.option_data.ask : null);
+
         // Pin x-axis to market hours (9:00 AM – 4:00 PM) on the selected date
         const dateForAxis = selectedDate || timestamps[timestamps.length - 1].toLocaleDateString('en-CA');
-        const xMin = new Date(`${dateForAxis}T09:00:00`);
+        const xMin = new Date(`${dateForAxis}T09:30:00`);
         const xMax = new Date(`${dateForAxis}T16:00:00`);
 
         const traces = [
+            // Bid line (lower edge)
             {
                 x: timestamps,
-                y: premiums,
-                name: 'Mid (Bid+Ask)/2',
+                y: bids,
+                name: 'Bid / Ask',
                 type: 'scatter',
-                mode: 'lines+markers',
-                line: { color: colors.premium, width: 2 },
-                marker: { size: 6 },
+                mode: 'lines',
+                line: { color: colors.mid, width: 2 },
+                connectgaps: true,
                 yaxis: 'y'
             },
+            // Ask line (upper edge) — fill down to bid
+            {
+                x: timestamps,
+                y: asks,
+                name: 'Ask',
+                type: 'scatter',
+                mode: 'lines',
+                line: { color: colors.mid, width: 2 },
+                fill: 'tonexty',
+                fillcolor: colors.bandFill,
+                connectgaps: true,
+                showlegend: false,
+                yaxis: 'y'
+            },
+            // Stock price on secondary axis
             {
                 x: timestamps,
                 y: stockPrices,
@@ -653,13 +688,14 @@ function Chart({ data, selectedDate }) {
                 line: { color: colors.stock, width: 1.5 },
                 yaxis: 'y2'
             },
+            // Last trade as dots
             {
                 x: timestamps,
                 y: lasts,
                 name: 'Last Trade',
                 type: 'scatter',
                 mode: 'markers',
-                marker: { size: 7, color: '#00aaff' },
+                marker: { size: 3, color: colors.lastTrade },
                 connectgaps: false,
                 yaxis: 'y'
             }
@@ -718,7 +754,7 @@ function Chart({ data, selectedDate }) {
             <div ref={chartRef} style={{ width: '100%', height: '100%', minHeight: '250px' }}></div>
         </div>
     );
-}
+});
 
 // Helpers for formatting nullable numbers
 const fmt = (v, decimals = 2) => v != null ? Number(v).toFixed(decimals) : '—';
@@ -1087,7 +1123,7 @@ function WatchlistRow({ item, onRemove }) {
             try {
                 const res = await fetch(`${API_BASE}/api/snapshots/${item.id}?limit=5000`);
                 const raw = await res.json();
-                if (raw.length !== countRef.current) {
+                if (raw.length > countRef.current) {
                     countRef.current = raw.length;
                     const mapped = raw.map(mapSnapshot).reverse();
                     setHistoryData(mapped);
@@ -1097,9 +1133,17 @@ function WatchlistRow({ item, onRemove }) {
         return () => clearInterval(interval);
     }, [expanded, item.id]);
 
+    const [confirmingRemove, setConfirmingRemove] = useState(false);
+    const confirmTimerRef = useRef(null);
+
     const handleRemove = (e) => {
         e.stopPropagation();
-        if (confirm(`Remove ${item.ticker} $${item.strike != null ? Number(item.strike).toFixed(2) : '?'} ${item.put_call.toUpperCase()} from watchlist?`)) {
+        if (!confirmingRemove) {
+            setConfirmingRemove(true);
+            confirmTimerRef.current = setTimeout(() => setConfirmingRemove(false), 3000);
+        } else {
+            clearTimeout(confirmTimerRef.current);
+            setConfirmingRemove(false);
             onRemove(item.id);
         }
     };
@@ -1146,11 +1190,11 @@ function WatchlistRow({ item, onRemove }) {
                 </td>
                 <td className="cell-remove">
                     <button
-                        className="remove-btn"
+                        className={`remove-btn ${confirmingRemove ? 'remove-confirming' : ''}`}
                         onClick={handleRemove}
-                        title="Remove from watchlist"
+                        title={confirmingRemove ? 'Click again to confirm' : 'Remove from watchlist'}
                     >
-                        ✕
+                        {confirmingRemove ? 'Sure?' : '✕'}
                     </button>
                 </td>
             </tr>
@@ -1463,7 +1507,7 @@ function QuickAddCard({ onAdded }) {
                     value={ticker}
                     onChange={e => { setTicker(e.target.value.toUpperCase()); if (strikes.length > 0) setStrikesStale(true); }}
                     onKeyDown={handleTickerKeyDown}
-                    placeholder="TICKER"
+                    placeholder="Type a ticker & press Enter"
                     disabled={isLoading}
                 />
                 <div className="quick-add-putcall">
@@ -1510,7 +1554,6 @@ function QuickAddCard({ onAdded }) {
             </div>
             {error && <div className="quick-add-error">{error}</div>}
             {status === 'loading-strikes' && <div className="quick-add-hint">Loading strikes...</div>}
-            {status === 'idle' && !error && <div className="quick-add-hint">Type a ticker and press Enter</div>}
         </div>
     );
 }
@@ -1692,7 +1735,7 @@ function App() {
         };
 
         fetchMarketStatus();
-        const interval = setInterval(fetchMarketStatus, 300000); // 5 minutes
+        const interval = setInterval(fetchMarketStatus, 60000); // 1 minute
         return () => clearInterval(interval);
     }, []);
 

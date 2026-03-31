@@ -1390,6 +1390,24 @@ body {
     color: #fff;
 }
 
+.remove-btn.remove-confirming {
+    width: auto;
+    padding: 0 8px;
+    border-radius: 4px;
+    background: var(--accent-danger);
+    border-color: var(--accent-danger);
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    animation: confirmPulse 1s ease-in-out infinite;
+}
+
+@keyframes confirmPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
 /* Watchlist View */
 
 
@@ -1440,10 +1458,10 @@ body {
     min-width: 0;
 }
 
-/* Ticker — fixed, never grows */
+/* Ticker — wider to fit placeholder text */
 .quick-add-ticker {
-    flex: 0 0 90px;
-    width: 90px;
+    flex: 0 0 250px;
+    width: 250px;
     padding: var(--space-xs) var(--space-sm);
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
@@ -1453,6 +1471,11 @@ body {
     font-size: 0.875rem;
     text-transform: uppercase;
     transition: border-color 0.2s ease;
+}
+
+.quick-add-ticker::placeholder {
+    text-transform: none;
+    letter-spacing: normal;
 }
 
 .quick-add-ticker:focus {

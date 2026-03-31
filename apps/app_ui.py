@@ -342,6 +342,13 @@ class Main_App_Window(QMainWindow):
         self.schwab_action_btn.setMinimumWidth(100)
         self.schwab_action_btn.clicked.connect(self.schwab_action_clicked)
 
+        # Disconnect button (orange) — drops Schwab client, falls back to yfinance
+        self.schwab_disconnect_btn = QPushButton("Disconnect")
+        self.schwab_disconnect_btn.setFont(QFont("Arial", 12))
+        self.schwab_disconnect_btn.setMinimumWidth(100)
+        self.schwab_disconnect_btn.setStyleSheet("QPushButton { background-color: #FF9800; color: white; }")
+        self.schwab_disconnect_btn.clicked.connect(self.schwab_disconnect_clicked)
+
         # Delete button (red)
         self.schwab_delete_btn = QPushButton("Delete")
         self.schwab_delete_btn.setFont(QFont("Arial", 12))
@@ -350,6 +357,7 @@ class Main_App_Window(QMainWindow):
         self.schwab_delete_btn.clicked.connect(self.schwab_delete_clicked)
 
         status_row.addWidget(self.schwab_action_btn)
+        status_row.addWidget(self.schwab_disconnect_btn)
         status_row.addWidget(self.schwab_delete_btn)
 
         schwab_layout.addLayout(status_row)
@@ -400,6 +408,30 @@ class Main_App_Window(QMainWindow):
             self.schwab_action_btn.setEnabled(True)
             self.schwab_action_btn.setStyleSheet(
                 "QPushButton { background-color: #4CAF50; color: white; }")
+
+        # Disconnect/Reconnect button
+        if status == "authorized":
+            self.schwab_disconnect_btn.setText("Disconnect")
+            self.schwab_disconnect_btn.setEnabled(True)
+            self.schwab_disconnect_btn.setStyleSheet("QPushButton { background-color: #FF9800; color: white; }")
+            try:
+                self.schwab_disconnect_btn.clicked.disconnect()
+            except TypeError:
+                pass
+            self.schwab_disconnect_btn.clicked.connect(self.schwab_disconnect_clicked)
+        elif status == "token_expired":
+            self.schwab_disconnect_btn.setText("Reconnect")
+            self.schwab_disconnect_btn.setEnabled(True)
+            self.schwab_disconnect_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; }")
+            try:
+                self.schwab_disconnect_btn.clicked.disconnect()
+            except TypeError:
+                pass
+            self.schwab_disconnect_btn.clicked.connect(self.schwab_reconnect_clicked)
+        else:
+            self.schwab_disconnect_btn.setText("Disconnect")
+            self.schwab_disconnect_btn.setEnabled(False)
+            self.schwab_disconnect_btn.setStyleSheet("QPushButton { background-color: #555555; color: #999999; }")
 
         # Delete button: enabled unless nothing is configured
         self.schwab_delete_btn.setEnabled(status != "not_configured")
@@ -480,6 +512,25 @@ class Main_App_Window(QMainWindow):
             logger.info("Schwab authorization complete")
         else:
             logger.error("Schwab authorization failed — check logs for details")
+
+    def schwab_disconnect_clicked(self):
+        """Drop the in-memory Schwab client — falls back to yfinance without deleting credentials."""
+        schwab_client.disconnect()
+        self.update_schwab_status()
+        logger.info("Schwab disconnected — falling back to yfinance")
+
+    def schwab_reconnect_clicked(self):
+        """Re-initialize Schwab client from keyring credentials."""
+        creds = gm.get_schwab_credentials()
+        if creds and creds.get('client_id') and creds.get('client_secret'):
+            schwab_client.init(creds['client_id'], creds['client_secret'])
+            self.update_schwab_status()
+            if schwab_client.is_available():
+                logger.info("Schwab reconnected")
+            else:
+                logger.warning("Schwab reconnect failed — token may be expired")
+        else:
+            logger.warning("No Schwab credentials found in keyring")
 
     def schwab_delete_clicked(self):
         """Confirm and delete all Schwab credentials, resetting to not_configured."""
