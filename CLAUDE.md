@@ -504,6 +504,11 @@ python migrate_data.py
 ```
 This groups snapshots by date, creates new date-specific files, and renames legacy files to `.json.bak`.
 
+### Shared State Writes Must Run on Every Polling Cycle
+When the watcher writes state to `website_settings.json` (e.g. `data_source`), the write must happen **before** the market-closed early `continue`. Otherwise the value goes stale during off-hours and the web UI shows incorrect info (e.g. "Powered by Schwab" when the token is expired and the system is actually using yfinance).
+
+**Pattern:** In `OptionsTimer.run()`, any settings-file write that should reflect current runtime state must be placed between the market status check and the `if not market_status['is_open']: continue` branch — never after it.
+
 ### SSE Polling Rate Based on Market Status
 Adjust polling intervals based on market hours to reduce unnecessary API calls:
 ```python
