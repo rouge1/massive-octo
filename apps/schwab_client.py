@@ -298,6 +298,10 @@ def get_option_data(ticker: str, expiration: str, strike: float, put_call: str) 
                             "volume": int(c["totalVolume"]) if c.get("totalVolume") else None,
                             "open_interest": int(c["openInterest"]) if c.get("openInterest") else None,
                             "iv": float(iv_raw) / 100 if iv_raw else None,
+                            "delta": float(c["delta"]) if c.get("delta") is not None else None,
+                            "gamma": float(c["gamma"]) if c.get("gamma") is not None else None,
+                            "theta": float(c["theta"]) if c.get("theta") is not None else None,
+                            "vega": float(c["vega"]) if c.get("vega") is not None else None,
                         }
         raise SchwabUnavailable(f"No data for {ticker} {expiration} {strike} {put_call}")
     except SchwabUnavailable:

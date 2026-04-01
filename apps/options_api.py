@@ -210,6 +210,7 @@ def _yf_get_option_data(ticker: str, expiration: str, strike: float, put_call: s
         ask = row.get('ask', 0) or 0
         mid = (bid + ask) / 2 if bid and ask else row.get('lastPrice', 0)
         
+        import pandas as pd
         return {
             'bid': float(bid) if bid else None,
             'ask': float(ask) if ask else None,
@@ -218,6 +219,10 @@ def _yf_get_option_data(ticker: str, expiration: str, strike: float, put_call: s
             'volume': int(row.get('volume')) if row.get('volume') else None,
             'open_interest': int(row.get('openInterest')) if row.get('openInterest') else None,
             'iv': float(row.get('impliedVolatility')) if row.get('impliedVolatility') else None,
+            'delta': float(row['delta']) if pd.notna(row.get('delta')) else None,
+            'gamma': float(row['gamma']) if pd.notna(row.get('gamma')) else None,
+            'theta': float(row['theta']) if pd.notna(row.get('theta')) else None,
+            'vega': float(row['vega']) if pd.notna(row.get('vega')) else None,
         }
     
     except Exception as e:

@@ -771,6 +771,7 @@ function mapSnapshot(s) {
             bid: s.bid, ask: s.ask, mid: s.mid,
             last: s.last_price, volume: s.volume,
             open_interest: s.open_interest, iv: s.implied_volatility,
+            delta: s.delta, gamma: s.gamma, theta: s.theta, vega: s.vega,
         }
     };
 }

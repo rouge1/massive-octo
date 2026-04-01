@@ -74,6 +74,7 @@ option_snapshots
 ├── bid, ask, mid, last_price
 ├── volume, open_interest
 ├── implied_volatility, spread_pct
+├── delta, gamma, theta, vega  # Greeks (nullable — NULL for backfill/legacy data)
 
 alerts
 ├── id, user_id (FK), watchlist_id (FK, nullable)
@@ -84,7 +85,7 @@ alerts
 └── created_at, last_checked, triggered_at, last_notified
 ```
 
-**Important:** `_verify_schema()` is read-only — it logs warnings for missing columns but never alters the DB. To fix schema drift, drop and recreate tables via `db_manager.drop_all_tables()` then `db_manager.init_db()`.
+**Important:** `_verify_schema()` is read-only — it logs warnings for missing columns but never alters the DB. `_migrate_add_columns()` runs before `_verify_schema()` in `init_db()` and uses idempotent `ALTER TABLE` to add any missing columns (checks inspector first). To fix larger schema drift, drop and recreate tables via `db_manager.drop_all_tables()` then `db_manager.init_db()`.
 
 ## Running the App
 
@@ -233,6 +234,10 @@ Single horizontal row: `[ TICKER ] [ CALL | PUT ] [ Strike ▾ ] [ DTE ▾ ] [ +
 - [x] Chart auto-refresh — periodic re-fetch detects backfill/gap-fill inserts while row is expanded
 - [x] Graceful Schwab token expiry — disables client, falls back to yfinance, GUI updates within 60s
 - [x] Schwab callback URL saved to settings and pre-filled on restart
+- [x] Greeks data pipeline — delta/gamma/theta/vega from yfinance + Schwab, stored in DB, served via API/SSE
+- [x] Schema migration — `_migrate_add_columns()` adds missing columns via ALTER TABLE (idempotent)
+- [ ] Theta decay visualization — actual premium vs Black-Scholes theoretical curve
+- [ ] Greeks dashboard — live KPI cards + toggleable chart traces
 - [ ] Browser notifications for spread alerts
 - [ ] CSV export
 
@@ -296,6 +301,7 @@ On watcher startup (and when adding new items via the web UI), the system backfi
 | `volume` | `volume` | Option contract volume |
 | computed | `spread_pct` | `(mid / stock_price) * 100` |
 | — | `bid`, `ask`, `open_interest`, `implied_volatility` | NULL (not in candle data) |
+| — | `delta`, `gamma`, `theta`, `vega` | NULL (not in candle data) |
 
 ### Token validation on init
 `schwab_client.init()` makes a lightweight `get_market_hours(EQUITY)` call after loading the client. If it fails, `_client` is set to `None` so the GUI correctly shows "Token expired" instead of falsely showing "Authorized".
@@ -344,6 +350,23 @@ def to_native(val):
     except (AttributeError, ValueError):
         return val
 ```
+
+### yfinance Greeks Return NaN, Not None
+yfinance option chain DataFrames return `NaN` (not `None`) for Greeks on illiquid options. `float('nan') is not None` evaluates to `True`, so a simple `if value is not None` guard will pass NaN through. Always use `pd.notna()`:
+```python
+import pandas as pd
+'delta': float(row['delta']) if pd.notna(row.get('delta')) else None,
+```
+Schwab returns `None` or omits the key entirely, so `.get('delta')` with `is not None` check is sufficient.
+
+### Greeks Data Sources
+Both yfinance and Schwab return delta, gamma, theta, vega in their option chain responses. These are extracted in `_yf_get_option_data()` (options_api.py) and `get_option_data()` (schwab_client.py) respectively, stored in `option_snapshots`, and served through all API/SSE endpoints. Historical backfill and gap-fill snapshots have NULL Greeks (not available from candle data).
+
+### Schema Migration via ALTER TABLE
+`_migrate_add_columns()` in `DatabaseManager` adds missing columns to existing tables using `ALTER TABLE`. It checks the inspector first (idempotent). Both entry points (`options_watcher.py` and `website.py`) run this on connect via `init_db()`. When adding new columns:
+1. Add the column to the SQLAlchemy model in `database.py`
+2. Add the column to the `migrations` dict in `_migrate_add_columns()`
+3. Restart **both** apps — each has its own `DatabaseManager` that needs to run the migration
 
 ### Dropdown Styling Across Themes
 Browser `<option>` elements ignore parent CSS. Must explicitly style:
@@ -657,6 +680,7 @@ const mapped = raw.map(s => ({
         volume: s.volume,
         open_interest: s.open_interest,
         iv: s.implied_volatility,        // DB column: implied_volatility → UI: iv
+        delta: s.delta, gamma: s.gamma, theta: s.theta, vega: s.vega,
     }
 })).reverse();  // DB returns newest-first; Chart expects oldest-first
 ```

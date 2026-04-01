@@ -252,6 +252,10 @@ class OptionSnapshot(Base):
     # Greeks / metrics
     implied_volatility = Column(Float, nullable=True)
     spread_pct = Column(Float, nullable=True)  # (mid / stock_price) * 100
+    delta = Column(Float, nullable=True)
+    gamma = Column(Float, nullable=True)
+    theta = Column(Float, nullable=True)
+    vega = Column(Float, nullable=True)
     
     # Relationship
     watchlist_item = relationship("OptionsWatchlist", back_populates="snapshots")
@@ -273,7 +277,11 @@ class OptionSnapshot(Base):
             'volume': self.volume,
             'open_interest': self.open_interest,
             'implied_volatility': self.implied_volatility,
-            'spread_pct': self.spread_pct
+            'spread_pct': self.spread_pct,
+            'delta': self.delta,
+            'gamma': self.gamma,
+            'theta': self.theta,
+            'vega': self.vega
         }
 
 
@@ -543,11 +551,38 @@ class DatabaseManager:
         try:
             logger.info("Initializing database tables")
             Base.metadata.create_all(self.engine)
+            self._migrate_add_columns()
             self._verify_schema()
             logger.info("Database tables created successfully")
         except Exception as e:
             logger.error(f"Failed to initialize database: {str(e)}")
             raise
+
+    def _migrate_add_columns(self):
+        """Add missing columns to existing tables via ALTER TABLE.
+        Idempotent: checks inspector before adding."""
+        from sqlalchemy import inspect, text
+        inspector = inspect(self.engine)
+        existing_tables = inspector.get_table_names()
+
+        migrations = {
+            'option_snapshots': {
+                'delta': 'FLOAT NULL',
+                'gamma': 'FLOAT NULL',
+                'theta': 'FLOAT NULL',
+                'vega': 'FLOAT NULL',
+            }
+        }
+
+        for table_name, columns in migrations.items():
+            if table_name not in existing_tables:
+                continue
+            existing_cols = {col['name'] for col in inspector.get_columns(table_name)}
+            for col_name, col_type in columns.items():
+                if col_name not in existing_cols:
+                    logger.info(f"Migrating: adding column '{col_name}' to '{table_name}'")
+                    with self.engine.begin() as conn:
+                        conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"))
 
     def _verify_schema(self):
         """Compare model columns against actual DB columns and log warnings for mismatches.

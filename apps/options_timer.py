@@ -163,7 +163,11 @@ class OptionsTimer:
                                     volume=snapshot_data['volume'],
                                     open_interest=snapshot_data['open_interest'],
                                     implied_volatility=snapshot_data['iv'],
-                                    spread_pct=snapshot_data['spread_pct']
+                                    spread_pct=snapshot_data['spread_pct'],
+                                    delta=snapshot_data.get('delta'),
+                                    gamma=snapshot_data.get('gamma'),
+                                    theta=snapshot_data.get('theta'),
+                                    vega=snapshot_data.get('vega')
                                 )
                                 session.add(snapshot)
                                 success_count += 1

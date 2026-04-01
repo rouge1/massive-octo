@@ -74,6 +74,10 @@ class SnapshotResponse(BaseModel):
     open_interest: Optional[int]
     implied_volatility: Optional[float]
     spread_pct: Optional[float]
+    delta: Optional[float]
+    gamma: Optional[float]
+    theta: Optional[float]
+    vega: Optional[float]
 
 
 class OptionsServer:
@@ -510,6 +514,10 @@ class OptionsServer:
                             "volume": snapshot.volume,
                             "open_interest": snapshot.open_interest,
                             "iv": snapshot.implied_volatility,
+                            "delta": snapshot.delta,
+                            "gamma": snapshot.gamma,
+                            "theta": snapshot.theta,
+                            "vega": snapshot.vega,
                         }
                     }
                 finally:
