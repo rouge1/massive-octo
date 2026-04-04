@@ -56,8 +56,21 @@ def _handle_token_error(error):
     """If the error is a token/auth failure, disable the client to stop retrying."""
     global _client
     err_str = str(error).lower()
-    if "token_invalid" in err_str or "token_expired" in err_str or "refresh_token" in err_str:
-        logger.warning("Schwab token invalid — disabling client until re-authorized")
+
+    # Check for explicit token error strings
+    is_token_error = any(s in err_str for s in (
+        "token_invalid", "token_expired", "refresh_token",
+        "401 unauthorized", "403 forbidden",
+    ))
+
+    # Check for httpx.HTTPStatusError with 401/403 status code
+    if not is_token_error:
+        resp = getattr(error, "response", None)
+        if resp is not None and getattr(resp, "status_code", None) in (401, 403):
+            is_token_error = True
+
+    if is_token_error:
+        logger.warning("Schwab auth failed (%s) — disabling client until re-authorized", error)
         _client = None
 
 

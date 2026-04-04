@@ -40,8 +40,12 @@ def _schwab_with_fallback(schwab_fn, yf_fn, *args):
         try:
             return schwab_fn(*args)
         except Exception as e:
+            was_available = schwab_client.is_available()
             schwab_client._handle_token_error(e)
-            logger.warning(f"Schwab failed, falling back to yfinance: {e}")
+            if was_available and not schwab_client.is_available():
+                logger.warning("Schwab token expired — all future requests will use yfinance until re-authorized")
+            else:
+                logger.warning(f"Schwab call failed, falling back to yfinance: {e}")
     return yf_fn(*args)
 
 
