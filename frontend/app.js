@@ -83,6 +83,35 @@ const chartColors = {
     }
 };
 
+// Black-Scholes pricing
+const RISK_FREE_RATE = 0.045; // ~current risk-free rate
+
+function normCDF(x) {
+    // Rational approximation of cumulative normal distribution
+    const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741;
+    const a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+    const sign = x < 0 ? -1 : 1;
+    x = Math.abs(x) / Math.SQRT2;
+    const t = 1.0 / (1.0 + p * x);
+    const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+    return 0.5 * (1.0 + sign * y);
+}
+
+function blackScholes(S, K, T, sigma, putCall) {
+    // S=stock, K=strike, T=years to expiry, sigma=IV, putCall='call'|'put'
+    if (T <= 0) return Math.max(0, putCall === 'call' ? S - K : K - S); // intrinsic at expiry
+    if (!sigma || sigma <= 0 || !S || S <= 0) return null;
+
+    const d1 = (Math.log(S / K) + (RISK_FREE_RATE + 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T));
+    const d2 = d1 - sigma * Math.sqrt(T);
+
+    if (putCall === 'call') {
+        return S * normCDF(d1) - K * Math.exp(-RISK_FREE_RATE * T) * normCDF(d2);
+    } else {
+        return K * Math.exp(-RISK_FREE_RATE * T) * normCDF(-d2) - S * normCDF(-d1);
+    }
+}
+
 // Header Component
 function Header({ marketStatus }) {
     const { theme, setTheme } = useTheme();
@@ -638,112 +667,7 @@ const Chart = React.memo(function Chart({ data, selectedDate }) {
 
     useEffect(() => {
         if (!chartRef.current || data.length === 0) return;
-
-        const timestamps = data.map(d => new Date(d.timestamp));
-        const mids = data.map(d => d.premium);
-        const lasts = data.map(d => d.option_data ? d.option_data.last : null);
-        const stockPrices = data.map(d => d.stock_price);
-
-        const bids = data.map(d => d.option_data ? d.option_data.bid : null);
-        const asks = data.map(d => d.option_data ? d.option_data.ask : null);
-
-        // Pin x-axis to market hours (9:00 AM – 4:00 PM) on the selected date
-        const dateForAxis = selectedDate || timestamps[timestamps.length - 1].toLocaleDateString('en-CA');
-        const xMin = new Date(`${dateForAxis}T09:30:00`);
-        const xMax = new Date(`${dateForAxis}T16:00:00`);
-
-        const traces = [
-            // Bid line (lower edge)
-            {
-                x: timestamps,
-                y: bids,
-                name: 'Bid / Ask',
-                type: 'scatter',
-                mode: 'lines',
-                line: { color: colors.mid, width: 2 },
-                connectgaps: true,
-                yaxis: 'y'
-            },
-            // Ask line (upper edge) — fill down to bid
-            {
-                x: timestamps,
-                y: asks,
-                name: 'Ask',
-                type: 'scatter',
-                mode: 'lines',
-                line: { color: colors.mid, width: 2 },
-                fill: 'tonexty',
-                fillcolor: colors.bandFill,
-                connectgaps: true,
-                showlegend: false,
-                yaxis: 'y'
-            },
-            // Stock price on secondary axis
-            {
-                x: timestamps,
-                y: stockPrices,
-                name: 'Stock Price',
-                type: 'scatter',
-                mode: 'lines',
-                line: { color: colors.stock, width: 1.5 },
-                yaxis: 'y2'
-            },
-            // Last trade as dots
-            {
-                x: timestamps,
-                y: lasts,
-                name: 'Last Trade',
-                type: 'scatter',
-                mode: 'markers',
-                marker: { size: 3, color: colors.lastTrade },
-                connectgaps: false,
-                yaxis: 'y'
-            }
-        ];
-
-        const layout = {
-            xaxis: {
-                type: 'date',
-                range: [xMin, xMax],
-                showgrid: true,
-                gridcolor: colors.grid,
-                tickfont: { color: colors.text, size: 10 }
-            },
-            yaxis: {
-                title: { text: 'Price ($)', font: { color: colors.text, size: 11 } },
-                showgrid: true,
-                gridcolor: colors.grid,
-                tickfont: { color: colors.text, size: 10 },
-                side: 'left'
-            },
-            yaxis2: {
-                title: { text: 'Stock Price ($)', font: { color: colors.text, size: 11 } },
-                showgrid: false,
-                tickfont: { color: colors.text, size: 10 },
-                side: 'right',
-                overlaying: 'y'
-            },
-            paper_bgcolor: 'transparent',
-            plot_bgcolor: colors.bg,
-            font: { color: colors.text },
-            hoverlabel: colors.hoverlabel,
-            legend: {
-                orientation: 'h',
-                y: 1.12,
-                x: 0.5,
-                xanchor: 'center',
-                font: { size: 11 }
-            },
-            margin: { l: 60, r: 60, t: 30, b: 40 },
-            hovermode: 'x unified'
-        };
-
-        const config = {
-            responsive: true,
-            displayModeBar: false
-        };
-
-        Plotly.react(chartRef.current, traces, layout, config);
+        renderPriceChart(chartRef.current, data, selectedDate, colors);
     }, [data, theme]);
 
     if (data.length === 0) return null;
@@ -755,6 +679,219 @@ const Chart = React.memo(function Chart({ data, selectedDate }) {
         </div>
     );
 });
+
+function renderPriceChart(el, data, selectedDate, colors) {
+    const timestamps = data.map(d => new Date(d.timestamp));
+    const bids = data.map(d => d.option_data ? d.option_data.bid : null);
+    const asks = data.map(d => d.option_data ? d.option_data.ask : null);
+    const lasts = data.map(d => d.option_data ? d.option_data.last : null);
+    const stockPrices = data.map(d => d.stock_price);
+
+    const isMultiDay = !selectedDate;
+    let xRange;
+    let noDataBreaks = [];
+    if (isMultiDay) {
+        xRange = undefined;
+        // Detect weekdays with no data and collapse them from the axis
+        const tradingDays = new Set(timestamps.map(t => t.toLocaleDateString('en-CA')));
+        if (timestamps.length > 0) {
+            const start = new Date(timestamps[0]);
+            const end = new Date(timestamps[timestamps.length - 1]);
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                if (d.getDay() === 0 || d.getDay() === 6) continue;
+                const dateStr = d.toLocaleDateString('en-CA');
+                if (!tradingDays.has(dateStr)) {
+                    noDataBreaks.push(dateStr + ' 09:30');
+                }
+            }
+        }
+    } else {
+        const dateForAxis = selectedDate || timestamps[timestamps.length - 1].toLocaleDateString('en-CA');
+        xRange = [new Date(`${dateForAxis}T09:30:00`), new Date(`${dateForAxis}T16:00:00`)];
+    }
+
+    const tradingWindowMs = 6.5 * 60 * 60 * 1000;
+
+    const traces = [
+        { x: timestamps, y: bids, name: 'Bid / Ask', type: 'scatter', mode: 'lines',
+          line: { color: colors.mid, width: 2 }, connectgaps: true },
+        { x: timestamps, y: asks, name: 'Ask', type: 'scatter', mode: 'lines',
+          line: { color: colors.mid, width: 2 }, fill: 'tonexty', fillcolor: colors.bandFill,
+          connectgaps: true, showlegend: false },
+        { x: timestamps, y: stockPrices, name: 'Stock Price', type: 'scatter', mode: 'lines',
+          line: { color: colors.stock, width: 1.5 }, yaxis: 'y2' },
+        { x: timestamps, y: lasts, name: 'Last Trade', type: 'scatter', mode: 'markers',
+          marker: { size: 3, color: colors.lastTrade }, connectgaps: false }
+    ];
+
+    const layout = {
+        xaxis: {
+            type: 'date', range: xRange, autorange: isMultiDay ? true : undefined,
+            showgrid: true, gridcolor: colors.grid, tickfont: { color: colors.text, size: 10 },
+            rangebreaks: isMultiDay ? [
+                { bounds: [16, 9.5], pattern: 'hour' },
+                { bounds: ['sat', 'mon'], pattern: 'day of week' },
+                ...(noDataBreaks.length > 0 ? [{ values: noDataBreaks, dvalue: tradingWindowMs }] : [])
+            ] : []
+        },
+        yaxis: { title: { text: 'Price ($)', font: { color: colors.text, size: 11 } },
+                 showgrid: true, gridcolor: colors.grid, tickfont: { color: colors.text, size: 10 }, side: 'left' },
+        yaxis2: { title: { text: 'Stock Price ($)', font: { color: colors.text, size: 11 } },
+                  showgrid: false, tickfont: { color: colors.text, size: 10 }, side: 'right', overlaying: 'y' },
+        paper_bgcolor: 'transparent', plot_bgcolor: colors.bg, font: { color: colors.text },
+        hoverlabel: colors.hoverlabel,
+        legend: { orientation: 'h', y: 1.12, x: 0.5, xanchor: 'center', font: { size: 11 } },
+        margin: { l: 60, r: 60, t: 30, b: 40 }, hovermode: 'x unified'
+    };
+
+    Plotly.react(el, traces, layout, { responsive: true, displayModeBar: false });
+}
+
+function renderThetaDecayChart(el, data, item, colors) {
+    const expDate = new Date(item.expiration + 'T16:00:00');
+    const strike = Number(item.strike);
+    const putCall = item.put_call;
+
+    // Find the initial IV (fixed) from first snapshot — this stays constant
+    let initialIV = null;
+    for (let i = 0; i < data.length; i++) {
+        const iv = data[i].option_data ? data[i].option_data.iv : null;
+        if (iv && iv > 0) { initialIV = iv; break; }
+    }
+
+    // Collect actual last trade prices AND theoretical (fixed IV, actual stock) at each snapshot
+    const actualDTE = [];
+    const actualPrices = [];
+    const theoDTE = [];
+    const theoPrices = [];
+
+    data.forEach(d => {
+        const snapDate = new Date(d.timestamp);
+        const daysToExp = Math.max(0, (expDate - snapDate) / (1000 * 60 * 60 * 24));
+        const last = d.option_data ? d.option_data.last : null;
+        const stockPrice = d.stock_price;
+
+        // Actual last trade
+        if (last != null) {
+            actualDTE.push(daysToExp);
+            actualPrices.push(last);
+        }
+
+        // Theoretical: fixed IV from entry + actual stock price at this moment
+        if (initialIV && stockPrice) {
+            const T = daysToExp / 365.25;
+            const bs = blackScholes(stockPrice, strike, T, initialIV, putCall);
+            if (bs != null) {
+                theoDTE.push(daysToExp);
+                theoPrices.push(Math.round(bs * 100) / 100);
+            }
+        }
+    });
+
+    // Project theoretical forward to expiration using latest stock price + fixed IV
+    let latestStock = null;
+    for (let i = data.length - 1; i >= 0; i--) {
+        if (data[i].stock_price) { latestStock = data[i].stock_price; break; }
+    }
+
+    const projDTE = [];
+    const projPrices = [];
+    const nowDTE = Math.max(0, (expDate - new Date()) / (1000 * 60 * 60 * 24));
+
+    if (initialIV && latestStock) {
+        for (let d = nowDTE; d >= 0; d -= 0.25) {
+            const T = d / 365.25;
+            const bs = blackScholes(latestStock, strike, T, initialIV, putCall);
+            if (bs != null) {
+                projDTE.push(d);
+                projPrices.push(Math.round(bs * 100) / 100);
+            }
+        }
+        if (projDTE.length > 0 && projDTE[projDTE.length - 1] > 0) {
+            projDTE.push(0);
+            const intrinsic = putCall === 'call' ? Math.max(0, latestStock - strike) : Math.max(0, strike - latestStock);
+            projPrices.push(intrinsic);
+        }
+    }
+
+    const maxDTE = Math.max(
+        actualDTE.length > 0 ? Math.max(...actualDTE) : 0,
+        theoDTE.length > 0 ? Math.max(...theoDTE) : 0
+    );
+
+    // Build gap fill between actual and theoretical (shaded IV impact area)
+    const gapDTE = [], gapUpper = [], gapLower = [];
+    actualDTE.forEach((d, i) => {
+        // Find closest theoretical point
+        let closestIdx = 0, closestDist = Infinity;
+        theoDTE.forEach((td, ti) => {
+            const dist = Math.abs(td - d);
+            if (dist < closestDist) { closestDist = dist; closestIdx = ti; }
+        });
+        if (closestDist < 0.5 && theoPrices[closestIdx] != null && actualPrices[i] != null) {
+            gapDTE.push(d);
+            gapUpper.push(Math.max(actualPrices[i], theoPrices[closestIdx]));
+            gapLower.push(Math.min(actualPrices[i], theoPrices[closestIdx]));
+        }
+    });
+
+    const traces = [
+        // IV impact gap fill
+        { x: gapDTE, y: gapLower, type: 'scatter', mode: 'lines',
+          line: { color: 'transparent', width: 0 }, showlegend: false, hoverinfo: 'skip' },
+        { x: gapDTE, y: gapUpper, type: 'scatter', mode: 'lines',
+          fill: 'tonexty', fillcolor: 'rgba(255,204,0,0.10)', name: 'IV Impact',
+          line: { color: 'transparent', width: 0 },
+          hoverinfo: 'skip' },
+        // Theoretical (fixed IV, actual stock price)
+        { x: theoDTE, y: theoPrices, name: 'Theoretical (Fixed IV)',
+          type: 'scatter', mode: 'lines',
+          line: { color: colors.lastTrade, width: 2.5, dash: 'dash' },
+          hovertemplate: 'DTE: %{x:.1f}<br>Theoretical: $%{y:.2f}<extra></extra>' },
+        // Projected decay (from now to expiration)
+        { x: projDTE, y: projPrices, name: 'Projected',
+          type: 'scatter', mode: 'lines',
+          line: { color: colors.lastTrade, width: 1.5, dash: 'dot' },
+          opacity: 0.6, showlegend: false,
+          hovertemplate: 'DTE: %{x:.1f}<br>Projected: $%{y:.2f}<extra></extra>' },
+        // Actual last trade prices
+        { x: actualDTE, y: actualPrices, name: 'Actual (Last)',
+          type: 'scatter', mode: 'lines+markers',
+          line: { color: colors.mid, width: 2 },
+          marker: { size: 3, color: colors.mid },
+          hovertemplate: 'DTE: %{x:.1f}<br>Last: $%{y:.2f}<extra></extra>' },
+    ];
+
+    const layout = {
+        xaxis: {
+            title: { text: 'Days to Expiration', font: { color: colors.text, size: 11 } },
+            showgrid: true, gridcolor: colors.grid,
+            tickfont: { color: colors.text, size: 10 },
+            range: [Math.ceil(maxDTE) + 1, -0.5]
+        },
+        yaxis: {
+            title: { text: 'Option Premium ($)', font: { color: colors.text, size: 11 } },
+            showgrid: true, gridcolor: colors.grid,
+            tickfont: { color: colors.text, size: 10 },
+            tickprefix: '$', side: 'left'
+        },
+        shapes: [
+            // "Now" vertical line — bold and visible
+            { type: 'line', x0: nowDTE, x1: nowDTE, y0: 0, y1: 1, yref: 'paper',
+              line: { color: '#ff3333', width: 2.5 } }
+        ],
+        annotations: [
+            { x: nowDTE, y: 1.02, yref: 'paper', xanchor: 'left', text: '  NOW',
+              showarrow: false, font: { color: '#ff3333', size: 11, family: 'var(--font-mono), monospace' } }
+        ],
+        paper_bgcolor: 'transparent', plot_bgcolor: colors.bg, font: { color: colors.text },
+        hoverlabel: colors.hoverlabel,
+        legend: { orientation: 'h', y: 1.12, x: 0.5, xanchor: 'center', font: { size: 11 } },
+        margin: { l: 60, r: 30, t: 30, b: 50 }, hovermode: 'x unified'
+    };
+
+    Plotly.react(el, traces, layout, { responsive: true, displayModeBar: false });
+}
 
 // Helpers for formatting nullable numbers
 const fmt = (v, decimals = 2) => v != null ? Number(v).toFixed(decimals) : '—';
@@ -777,8 +914,9 @@ function mapSnapshot(s) {
 }
 
 // Data Table Toggle Header (separate component for header row layout)
-function DataTableToggleHeader({ isOpen, onToggle, selectedDate, availableDates, onDateChange }) {
-    const hasDates = availableDates && availableDates.length > 0 && selectedDate;
+function DataTableToggleHeader({ isOpen, onToggle, selectedDate, availableDates, onDateChange, dte, activeTimeframe, onTimeframeSelect }) {
+    const is1D = activeTimeframe === 1;
+    const hasDates = is1D && availableDates && availableDates.length > 0 && selectedDate;
     const idx = hasDates ? availableDates.indexOf(selectedDate) : -1;
     const isToday = selectedDate === new Date().toLocaleDateString('en-CA');
 
@@ -787,21 +925,41 @@ function DataTableToggleHeader({ isOpen, onToggle, selectedDate, availableDates,
         return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     };
 
+    // Build timeframe buttons: [15D][7D][1D]
+    const frames = [
+        { label: '15D', value: 15 },
+        { label: '7D', value: 7 },
+        { label: '1D', value: 1 },
+    ];
+
     return (
         <div className="data-table-toggle-header">
-            {hasDates && (
-                <div className="date-nav-inline">
-                    <button className="date-nav-inline-btn"
-                        onClick={e => { e.stopPropagation(); onDateChange(availableDates[idx - 1]); }}
-                        disabled={idx <= 0}>←</button>
-                    <span className="date-nav-inline-label">
-                        {fmt(selectedDate)}{isToday ? ' · Today' : ''}
-                    </span>
-                    <button className="date-nav-inline-btn"
-                        onClick={e => { e.stopPropagation(); onDateChange(availableDates[idx + 1]); }}
-                        disabled={idx >= availableDates.length - 1}>→</button>
+            <div className="footer-left">
+                <div className="timeframe-buttons">
+                    {frames.map(f => (
+                        <button
+                            key={f.value}
+                            className={`timeframe-btn${activeTimeframe === f.value ? ' active' : ''}${f.value === 'dte' ? ' dte-btn' : ''}`}
+                            onClick={e => { e.stopPropagation(); onTimeframeSelect(f.value); }}
+                        >
+                            {f.label}
+                        </button>
+                    ))}
                 </div>
-            )}
+                {hasDates && (
+                    <div className="date-nav-inline">
+                        <button className="date-nav-inline-btn"
+                            onClick={e => { e.stopPropagation(); onDateChange(availableDates[idx - 1]); }}
+                            disabled={idx <= 0}>←</button>
+                        <span className="date-nav-inline-label">
+                            {fmt(selectedDate)}{isToday ? ' · Today' : ''}
+                        </span>
+                        <button className="date-nav-inline-btn"
+                            onClick={e => { e.stopPropagation(); onDateChange(availableDates[idx + 1]); }}
+                            disabled={idx >= availableDates.length - 1}>→</button>
+                    </div>
+                )}
+            </div>
             <div className="date-nav-toggle-right" onClick={onToggle}>
                 <span className="data-table-title">Raw Data</span>
                 <span className={`data-table-toggle ${isOpen ? 'open' : ''}`}>
@@ -860,6 +1018,66 @@ function DataTable({ data, isOpen }) {
                     </tbody>
                 </table>
             </div>
+        </div>
+    );
+}
+
+// Timeframe Selector Component
+function TimeframeSelector({ dte, activeTimeframe, onSelect, selectedDate, availableDates, onDateChange }) {
+    // Build button list: [DTE][30][7][1] — DTE only if different from 30/7/1
+    const standardFrames = [30, 7, 1];
+    const frames = [];
+
+    // Add DTE button if it's different from all standard frames and > 0
+    if (dte > 0 && !standardFrames.includes(dte)) {
+        frames.push({ label: `${dte}D`, value: dte, isDTE: true });
+    }
+
+    // Add standard frames (only if <= DTE or it's 1D which always shows)
+    standardFrames.forEach(f => {
+        frames.push({ label: `${f}D`, value: f });
+    });
+
+    // Sort descending by value
+    frames.sort((a, b) => b.value - a.value);
+
+    // For 1D mode, show date nav arrows
+    const is1D = activeTimeframe === 1;
+    const hasDates = is1D && availableDates && availableDates.length > 0 && selectedDate;
+    const idx = hasDates ? availableDates.indexOf(selectedDate) : -1;
+    const isToday = selectedDate === new Date().toLocaleDateString('en-CA');
+
+    const fmtDate = (d) => {
+        const dt = new Date(d + 'T12:00:00');
+        return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+
+    return (
+        <div className="timeframe-bar">
+            <div className="timeframe-buttons">
+                {frames.map(f => (
+                    <button
+                        key={f.value}
+                        className={`timeframe-btn${activeTimeframe === f.value ? ' active' : ''}${f.isDTE ? ' dte-btn' : ''}`}
+                        onClick={e => { e.stopPropagation(); onSelect(f.value); }}
+                    >
+                        {f.label}
+                    </button>
+                ))}
+            </div>
+            {hasDates && (
+                <div className="date-nav-inline">
+                    <button className="date-nav-inline-btn"
+                        onClick={e => { e.stopPropagation(); onDateChange(availableDates[idx - 1]); }}
+                        disabled={idx <= 0}>←</button>
+                    <span className="date-nav-inline-label">
+                        {fmtDate(selectedDate)}{isToday ? ' · Today' : ''}
+                    </span>
+                    <button className="date-nav-inline-btn"
+                        onClick={e => { e.stopPropagation(); onDateChange(availableDates[idx + 1]); }}
+                        disabled={idx >= availableDates.length - 1}>→</button>
+                </div>
+            )}
         </div>
     );
 }
@@ -1038,6 +1256,7 @@ function WatchlistRow({ item, onRemove }) {
     const [historyLoading, setHistoryLoading] = useState(false);
     const [isDataTableOpen, setIsDataTableOpen] = useState(false);
     const [selectedDate, setSelectedDate] = useState(null);
+    const [activeTimeframe, setActiveTimeframe] = useState(1); // 1 = 1D, 7 = 7D, 15 = 15D, 'dte' = theta decay
 
     // Fetch snapshot data for this option
     useEffect(() => {
@@ -1149,16 +1368,32 @@ function WatchlistRow({ item, onRemove }) {
         }
     };
 
-    // Derived: available dates and filtered data for the selected day (9am-4pm)
+    // Derived: available dates and filtered data based on active timeframe
     const availableDates = [...new Set(historyData.map(d => d.timestamp.slice(0, 10)))].sort();
-    const filteredData = selectedDate
-        ? historyData.filter(d => {
-            if (!d.timestamp.startsWith(selectedDate)) return false;
+
+    const filteredData = (() => {
+        if (historyData.length === 0) return [];
+
+        if (activeTimeframe === 1) {
+            // 1D mode: single day, market hours only (existing behavior)
+            if (!selectedDate) return [];
+            return historyData.filter(d => {
+                if (!d.timestamp.startsWith(selectedDate)) return false;
+                const t = new Date(d.timestamp);
+                const mins = t.getHours() * 60 + t.getMinutes();
+                return mins >= 9 * 60 && mins < 16 * 60;
+            });
+        }
+
+        // Multi-day mode: filter to last N days from today
+        const now = new Date();
+        const cutoff = new Date(now);
+        cutoff.setDate(cutoff.getDate() - activeTimeframe);
+        return historyData.filter(d => {
             const t = new Date(d.timestamp);
-            const mins = t.getHours() * 60 + t.getMinutes();
-            return mins >= 9 * 60 && mins < 16 * 60;
-        })
-        : [];
+            return t >= cutoff;
+        });
+    })();
 
     return (
         <>
@@ -1209,7 +1444,7 @@ function WatchlistRow({ item, onRemove }) {
                                 <div className="empty-state-text">No history yet.</div>
                             ) : (
                                 <>
-                                    <Chart data={filteredData} selectedDate={selectedDate} />
+                                    <Chart data={filteredData} selectedDate={activeTimeframe === 1 ? selectedDate : null} />
                                     <div className="chart-footer-row">
                                         <DataTableToggleHeader
                                             isOpen={isDataTableOpen}
@@ -1217,6 +1452,9 @@ function WatchlistRow({ item, onRemove }) {
                                             selectedDate={selectedDate}
                                             availableDates={availableDates}
                                             onDateChange={setSelectedDate}
+                                            dte={dte}
+                                            activeTimeframe={activeTimeframe}
+                                            onTimeframeSelect={setActiveTimeframe}
                                         />
                                     </div>
                                     <DataTable data={filteredData} isOpen={isDataTableOpen} />
@@ -1589,7 +1827,8 @@ function WatchlistView() {
         eventSource.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
-                setItems(data || []);
+                const newJson = JSON.stringify(data);
+                setItems(prev => JSON.stringify(prev) === newJson ? prev : (data || []));
             } catch (e) {
                 console.error('Failed to parse SSE data:', e);
             }

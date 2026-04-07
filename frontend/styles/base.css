@@ -936,6 +936,52 @@ body {
     border-radius: var(--border-radius);
 }
 
+.footer-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.timeframe-buttons {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+}
+
+.timeframe-btn {
+    padding: 4px 12px;
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.timeframe-btn:last-child {
+    border-right: none;
+}
+
+.timeframe-btn:hover:not(.active) {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.timeframe-btn.active {
+    background: var(--accent-primary);
+    color: var(--bg-primary);
+}
+
+.timeframe-btn.dte-btn {
+    font-style: italic;
+}
+
 .date-nav-inline {
     display: flex;
     align-items: center;
