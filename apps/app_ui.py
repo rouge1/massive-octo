@@ -510,7 +510,11 @@ class Main_App_Window(QMainWindow):
         logger.info("Schwab credentials saved — browser opened for auth")
 
     def _do_schwab_authorize(self):
-        """Complete OAuth flow using the URL pasted into the Auth URL field."""
+        """Complete OAuth flow using the URL pasted into the Auth URL field.
+
+        If no callback URL is pasted yet, open the browser with a fresh auth URL
+        so the user can log in and get one.
+        """
         client_id = self.schwab_id_field.text().strip()
         client_secret = self.schwab_secret_field.text().strip()
         if not client_id or not client_secret:
@@ -519,8 +523,11 @@ class Main_App_Window(QMainWindow):
             return
         received_url = self.schwab_auth_url_field.text().strip()
         if not received_url:
-            QMessageBox.warning(self, "Schwab Auth",
-                                "Paste the callback URL from your browser into the Auth URL field.")
+            # No callback URL yet — open browser with fresh auth context
+            schwab_client.init(client_id, client_secret)
+            auth_url = schwab_client.get_auth_url(client_id)
+            webbrowser.open(auth_url)
+            logger.info("Schwab browser opened for re-authorization — paste callback URL and click Authorize again")
             return
         success = schwab_client.complete_auth(client_id, client_secret, received_url)
         self._write_data_source()

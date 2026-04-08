@@ -53,7 +53,8 @@ class SchwabUnavailable(Exception):
 
 
 def _handle_token_error(error):
-    """If the error is a token/auth failure, disable the client to stop retrying."""
+    """If the error is a token/auth failure, try to reinit from keyring (refresh token).
+    Only disables the client if reinit also fails."""
     global _client
     err_str = str(error).lower()
 
@@ -70,7 +71,15 @@ def _handle_token_error(error):
             is_token_error = True
 
     if is_token_error:
-        logger.warning("Schwab auth failed (%s) — disabling client until re-authorized", error)
+        logger.warning("Schwab auth failed (%s) — attempting token refresh", error)
+        # Try to reinitialize — schwab-py may auto-refresh the access token
+        if _client_id and _client_secret:
+            _client = None
+            init(_client_id, _client_secret)
+            if _client is not None:
+                logger.info("Schwab token refreshed successfully")
+                return
+        logger.warning("Schwab token refresh failed — disabling client until re-authorized")
         _client = None
 
 

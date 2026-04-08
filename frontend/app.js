@@ -1260,9 +1260,10 @@ function WatchlistRow({ item, onRemove }) {
 
     // Fetch snapshot data for this option
     useEffect(() => {
+        let isInitialFetch = true;
         const fetchSnapshot = async () => {
             try {
-                setLoading(true);
+                if (isInitialFetch) setLoading(true);
                 const res = await fetch(`${API_BASE}/api/watchlist/${item.id}/snapshot`);
                 const data = await res.json();
                 if (data.error) {
@@ -1275,6 +1276,7 @@ function WatchlistRow({ item, onRemove }) {
                 setError(e.message);
             } finally {
                 setLoading(false);
+                isInitialFetch = false;
             }
         };
 
