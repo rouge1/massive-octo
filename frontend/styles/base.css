@@ -1397,22 +1397,6 @@ body {
     color: var(--text-primary);
 }
 
-/* Clear sort indicator in drag column header */
-.clear-sort-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--accent-primary);
-    cursor: pointer;
-    font-size: 0.875rem;
-    opacity: 0.6;
-    transition: opacity 0.15s ease;
-}
-
-.clear-sort-btn:hover {
-    opacity: 1;
-}
-
 .col-drag {
     width: 36px;
     min-width: 36px;

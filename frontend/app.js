@@ -1485,7 +1485,7 @@ function WatchlistRow({ item, onRemove, onDragStart, onDragOver, onDragEnd, onDr
 }
 
 // Watchlist Table Header Component
-function WatchlistTableHeader({ sortBy, sortDirection, onSort, onClearSort }) {
+function WatchlistTableHeader({ onSort }) {
     const columns = [
         { key: null, label: '', type: null, className: 'col-drag' }, // Drag handle column
         { key: 'ticker', label: 'Ticker', type: 'string' },
@@ -1499,19 +1499,19 @@ function WatchlistTableHeader({ sortBy, sortDirection, onSort, onClearSort }) {
         { key: null, label: '', type: null }, // Remove button column
     ];
 
+    const [lastSort, setLastSort] = useState({ key: null, dir: 'asc' });
+
     const handleSort = (key) => {
-        if (!key) return; // Skip non-sortable columns
-        if (sortBy === key) {
-            onSort(key, sortDirection === 'asc' ? 'desc' : 'asc');
-        } else {
-            onSort(key, 'asc');
-        }
+        if (!key) return;
+        const dir = lastSort.key === key && lastSort.dir === 'asc' ? 'desc' : 'asc';
+        setLastSort({ key, dir });
+        onSort(key, dir);
     };
 
     const getSortIcon = (key) => {
         if (!key) return null;
-        if (sortBy !== key) return <span className="sort-icon"></span>;
-        return <span className={`sort-icon ${sortDirection}`}></span>;
+        if (lastSort.key !== key) return <span className="sort-icon"></span>;
+        return <span className={`sort-icon ${lastSort.dir}`}></span>;
     };
 
     return (
@@ -1523,16 +1523,12 @@ function WatchlistTableHeader({ sortBy, sortDirection, onSort, onClearSort }) {
                         className={`${col.key ? 'sortable' : ''} ${col.className || ''}`}
                         data-sort={col.key || ''}
                         data-type={col.type || ''}
-                        onClick={col.className === 'col-drag' ? (sortBy ? onClearSort : undefined) : () => handleSort(col.key)}
+                        onClick={() => handleSort(col.key)}
                     >
-                        {col.className === 'col-drag' ? (
-                            sortBy ? <span className="clear-sort-btn" title="Back to custom order">☰</span> : null
-                        ) : (
-                            <span className="th-content">
-                                {col.label}
-                                {getSortIcon(col.key)}
-                            </span>
-                        )}
+                        <span className="th-content">
+                            {col.label}
+                            {getSortIcon(col.key)}
+                        </span>
                     </th>
                 ))}
             </tr>
@@ -1824,8 +1820,6 @@ const WATCHLIST_ORDER_KEY = 'optionsTrackerWatchlistOrder';
 function WatchlistView() {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [sortBy, setSortBy] = useState(null); // null = custom drag order (default)
-    const [sortDirection, setSortDirection] = useState('asc');
     const [dragItemId, setDragItemId] = useState(null);
     const [dragOverItemId, setDragOverItemId] = useState(null);
     const [droppedItemId, setDroppedItemId] = useState(null);
@@ -1907,41 +1901,24 @@ function WatchlistView() {
         return diffDays;
     };
 
-    // Sort items based on current sort settings
-    const sortedItems = (() => {
-        if (!sortBy) return applyCustomOrder(items);
-
-        return [...items].sort((a, b) => {
-            let compareValue = 0;
-            switch (sortBy) {
-                case 'ticker':
-                    compareValue = a.ticker.localeCompare(b.ticker);
-                    break;
-                case 'dte':
-                    const dtea = calculateDTE(a.expiration);
-                    const dteb = calculateDTE(b.expiration);
-                    compareValue = dtea - dteb;
-                    break;
-                case 'strike':
-                    compareValue = a.strike - b.strike;
-                    break;
-                case 'type':
-                    compareValue = a.put_call.localeCompare(b.put_call);
-                    break;
-                default:
-                    compareValue = 0;
-            }
-            return sortDirection === 'asc' ? compareValue : -compareValue;
-        });
-    })();
+    const sortedItems = applyCustomOrder(items);
 
     const handleSort = (key, direction) => {
-        setSortBy(key);
-        setSortDirection(direction);
+        // Sort the items, save as new custom order, stay in drag mode
+        const sorted = [...items].sort((a, b) => {
+            let cmp = 0;
+            switch (key) {
+                case 'ticker': cmp = a.ticker.localeCompare(b.ticker); break;
+                case 'dte': cmp = calculateDTE(a.expiration) - calculateDTE(b.expiration); break;
+                case 'strike': cmp = a.strike - b.strike; break;
+                case 'type': cmp = a.put_call.localeCompare(b.put_call); break;
+                default: cmp = 0;
+            }
+            return direction === 'asc' ? cmp : -cmp;
+        });
+        saveOrder(sorted);
+        setItems(sorted);
     };
-
-    // Clear sort → back to custom order
-    const clearSort = () => { setSortBy(null); setSortDirection('asc'); };
 
     // Drag-and-drop handlers (only active when in custom order mode)
     const handleDragStart = (id) => setDragItemId(id);
@@ -2015,22 +1992,17 @@ function WatchlistView() {
             <QuickAddCard onAdded={refreshWatchlist} />
             <div className="watchlist-table-container">
                 <table className="watchlist-table">
-                    <WatchlistTableHeader
-                        sortBy={sortBy}
-                        sortDirection={sortDirection}
-                        onSort={handleSort}
-                        onClearSort={clearSort}
-                    />
+                    <WatchlistTableHeader onSort={handleSort} />
                     <tbody>
                         {sortedItems.map(item => (
                             <WatchlistRow
                                 key={item.id}
                                 item={item}
                                 onRemove={handleRemove}
-                                onDragStart={!sortBy ? handleDragStart : null}
-                                onDragOver={!sortBy ? handleDragOver : null}
-                                onDragEnd={!sortBy ? handleDragEnd : null}
-                                onDrop={!sortBy ? handleDrop : null}
+                                onDragStart={handleDragStart}
+                                onDragOver={handleDragOver}
+                                onDragEnd={handleDragEnd}
+                                onDrop={handleDrop}
                                 isDragging={dragItemId === item.id}
                                 isDropped={droppedItemId === item.id}
                                 dragOverId={dragOverItemId}
