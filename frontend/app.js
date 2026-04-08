@@ -1247,7 +1247,7 @@ function MainContent({ data, config, isTracking }) {
 }
 
 // Watchlist Row Component
-function WatchlistRow({ item, onRemove }) {
+function WatchlistRow({ item, onRemove, onDragStart, onDragOver, onDragEnd, onDrop, isDragging, isDropped, dragOverId }) {
     const [snapshot, setSnapshot] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -1399,7 +1399,21 @@ function WatchlistRow({ item, onRemove }) {
 
     return (
         <>
-            <tr className={`watchlist-row${expanded ? ' expanded' : ''}`} onClick={handleRowClick}>
+            <tr
+                className={`watchlist-row${expanded ? ' expanded' : ''}${isDragging ? ' dragging' : ''}${dragOverId === item.id ? ' drag-over' : ''}${isDropped ? ' just-dropped' : ''}`}
+                onClick={handleRowClick}
+                onDragOver={onDragOver ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; onDragOver(item.id); } : undefined}
+                onDrop={onDrop ? (e) => { e.preventDefault(); onDrop(item.id); } : undefined}
+                onDragEnd={onDragEnd || undefined}
+            >
+                <td
+                    className="cell-drag"
+                    draggable={!!onDragStart}
+                    onClick={e => e.stopPropagation()}
+                    onDragStart={onDragStart ? (e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setDragImage(e.target.closest('tr'), 0, 0); onDragStart(item.id); } : undefined}
+                >
+                    {onDragStart ? <span className="drag-handle">☰</span> : null}
+                </td>
                 <td className="cell-ticker">{item.ticker}</td>
                 <td className="cell-strike">${item.strike != null ? Number(item.strike).toFixed(2) : '—'}</td>
                 <td className="cell-type">
@@ -1438,7 +1452,7 @@ function WatchlistRow({ item, onRemove }) {
             </tr>
             {expanded && (
                 <tr className="watchlist-row-detail">
-                    <td colSpan={9}>
+                    <td colSpan={10}>
                         <div className="row-history-panel">
                             {historyLoading ? (
                                 <div className="spinner"></div>
@@ -1471,8 +1485,9 @@ function WatchlistRow({ item, onRemove }) {
 }
 
 // Watchlist Table Header Component
-function WatchlistTableHeader({ sortBy, sortDirection, onSort }) {
+function WatchlistTableHeader({ sortBy, sortDirection, onSort, onClearSort }) {
     const columns = [
+        { key: null, label: '', type: null, className: 'col-drag' }, // Drag handle column
         { key: 'ticker', label: 'Ticker', type: 'string' },
         { key: 'strike', label: 'Strike', type: 'number' },
         { key: 'type', label: 'Type', type: 'string' },
@@ -1505,15 +1520,19 @@ function WatchlistTableHeader({ sortBy, sortDirection, onSort }) {
                 {columns.map((col, idx) => (
                     <th
                         key={idx}
-                        className={col.key ? 'sortable' : ''}
+                        className={`${col.key ? 'sortable' : ''} ${col.className || ''}`}
                         data-sort={col.key || ''}
                         data-type={col.type || ''}
-                        onClick={() => handleSort(col.key)}
+                        onClick={col.className === 'col-drag' ? (sortBy ? onClearSort : undefined) : () => handleSort(col.key)}
                     >
-                        <span className="th-content">
-                            {col.label}
-                            {getSortIcon(col.key)}
-                        </span>
+                        {col.className === 'col-drag' ? (
+                            sortBy ? <span className="clear-sort-btn" title="Back to custom order">☰</span> : null
+                        ) : (
+                            <span className="th-content">
+                                {col.label}
+                                {getSortIcon(col.key)}
+                            </span>
+                        )}
                     </th>
                 ))}
             </tr>
@@ -1800,12 +1819,39 @@ function QuickAddCard({ onAdded }) {
 }
 
 // Watchlist View Component
+const WATCHLIST_ORDER_KEY = 'optionsTrackerWatchlistOrder';
+
 function WatchlistView() {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [sortBy, setSortBy] = useState('ticker'); // default sort
+    const [sortBy, setSortBy] = useState(null); // null = custom drag order (default)
     const [sortDirection, setSortDirection] = useState('asc');
+    const [dragItemId, setDragItemId] = useState(null);
+    const [dragOverItemId, setDragOverItemId] = useState(null);
+    const [droppedItemId, setDroppedItemId] = useState(null);
     const eventSourceRef = useRef(null);
+
+    // Apply saved order to items
+    const applyCustomOrder = (itemList) => {
+        try {
+            const saved = localStorage.getItem(WATCHLIST_ORDER_KEY);
+            if (!saved) return itemList;
+            const order = JSON.parse(saved);
+            const orderMap = {};
+            order.forEach((id, idx) => orderMap[id] = idx);
+            return [...itemList].sort((a, b) => {
+                const posA = orderMap[a.id] !== undefined ? orderMap[a.id] : 9999;
+                const posB = orderMap[b.id] !== undefined ? orderMap[b.id] : 9999;
+                return posA - posB;
+            });
+        } catch { return itemList; }
+    };
+
+    const saveOrder = (itemList) => {
+        try {
+            localStorage.setItem(WATCHLIST_ORDER_KEY, JSON.stringify(itemList.map(i => i.id)));
+        } catch {}
+    };
 
     // SSE connection for real-time watchlist updates
     useEffect(() => {
@@ -1814,7 +1860,7 @@ function WatchlistView() {
             try {
                 const res = await fetch(`${API_BASE}/api/watchlist`);
                 const data = await res.json();
-                setItems(data || []);
+                setItems(applyCustomOrder(data || []));
                 setLoading(false);
             } catch (e) {
                 console.error('Failed to load watchlist:', e);
@@ -1829,8 +1875,9 @@ function WatchlistView() {
         eventSource.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
-                const newJson = JSON.stringify(data);
-                setItems(prev => JSON.stringify(prev) === newJson ? prev : (data || []));
+                const ordered = applyCustomOrder(data || []);
+                const newJson = JSON.stringify(ordered);
+                setItems(prev => JSON.stringify(prev) === newJson ? prev : ordered);
             } catch (e) {
                 console.error('Failed to parse SSE data:', e);
             }
@@ -1861,41 +1908,69 @@ function WatchlistView() {
     };
 
     // Sort items based on current sort settings
-    const sortedItems = [...items].sort((a, b) => {
-        let compareValue = 0;
+    const sortedItems = (() => {
+        if (!sortBy) return applyCustomOrder(items);
 
-        switch (sortBy) {
-            case 'ticker':
-                compareValue = a.ticker.localeCompare(b.ticker);
-                break;
-            case 'dte':
-                const dtea = calculateDTE(a.expiration);
-                const dteb = calculateDTE(b.expiration);
-                compareValue = dtea - dteb;
-                break;
-            case 'strike':
-                compareValue = a.strike - b.strike;
-                break;
-            case 'type':
-                compareValue = a.put_call.localeCompare(b.put_call);
-                break;
-            default:
-                compareValue = 0;
-        }
-
-        return sortDirection === 'asc' ? compareValue : -compareValue;
-    });
+        return [...items].sort((a, b) => {
+            let compareValue = 0;
+            switch (sortBy) {
+                case 'ticker':
+                    compareValue = a.ticker.localeCompare(b.ticker);
+                    break;
+                case 'dte':
+                    const dtea = calculateDTE(a.expiration);
+                    const dteb = calculateDTE(b.expiration);
+                    compareValue = dtea - dteb;
+                    break;
+                case 'strike':
+                    compareValue = a.strike - b.strike;
+                    break;
+                case 'type':
+                    compareValue = a.put_call.localeCompare(b.put_call);
+                    break;
+                default:
+                    compareValue = 0;
+            }
+            return sortDirection === 'asc' ? compareValue : -compareValue;
+        });
+    })();
 
     const handleSort = (key, direction) => {
         setSortBy(key);
         setSortDirection(direction);
     };
 
+    // Clear sort → back to custom order
+    const clearSort = () => { setSortBy(null); setSortDirection('asc'); };
+
+    // Drag-and-drop handlers (only active when in custom order mode)
+    const handleDragStart = (id) => setDragItemId(id);
+    const handleDragOver = (id) => { if (id !== dragItemId) setDragOverItemId(id); };
+    const handleDragEnd = () => { setDragItemId(null); setDragOverItemId(null); };
+    const handleDrop = (targetId) => {
+        if (!dragItemId || dragItemId === targetId) { handleDragEnd(); return; }
+        const ordered = applyCustomOrder(items);
+        const dragIdx = ordered.findIndex(i => i.id === dragItemId);
+        const targetIdx = ordered.findIndex(i => i.id === targetId);
+        if (dragIdx === -1 || targetIdx === -1) { handleDragEnd(); return; }
+        const reordered = [...ordered];
+        const [moved] = reordered.splice(dragIdx, 1);
+        reordered.splice(targetIdx, 0, moved);
+        saveOrder(reordered);
+        setItems(reordered);
+        setDroppedItemId(dragItemId);
+        setTimeout(() => setDroppedItemId(null), 850);
+        handleDragEnd();
+    };
+
     const refreshWatchlist = async () => {
         try {
             const res = await fetch(`${API_BASE}/api/watchlist`);
             const data = await res.json();
-            setItems(data || []);
+            const ordered = applyCustomOrder(data || []);
+            // Save order so new items get a position
+            saveOrder(ordered);
+            setItems(ordered);
         } catch (e) {
             console.error('Failed to refresh watchlist:', e);
         }
@@ -1944,6 +2019,7 @@ function WatchlistView() {
                         sortBy={sortBy}
                         sortDirection={sortDirection}
                         onSort={handleSort}
+                        onClearSort={clearSort}
                     />
                     <tbody>
                         {sortedItems.map(item => (
@@ -1951,6 +2027,13 @@ function WatchlistView() {
                                 key={item.id}
                                 item={item}
                                 onRemove={handleRemove}
+                                onDragStart={!sortBy ? handleDragStart : null}
+                                onDragOver={!sortBy ? handleDragOver : null}
+                                onDragEnd={!sortBy ? handleDragEnd : null}
+                                onDrop={!sortBy ? handleDrop : null}
+                                isDragging={dragItemId === item.id}
+                                isDropped={droppedItemId === item.id}
+                                dragOverId={dragOverItemId}
                             />
                         ))}
                     </tbody>
