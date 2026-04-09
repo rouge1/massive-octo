@@ -30,6 +30,20 @@ if not logger.handlers:
     logger.setLevel(logging.INFO)
 
 
+import math
+
+def _safe_int(val):
+    """Convert to int, returning None for NaN/None/inf."""
+    if val is None:
+        return None
+    try:
+        if math.isnan(val) or math.isinf(val):
+            return None
+        return int(val)
+    except (TypeError, ValueError):
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Public API — Schwab-first with yfinance fallback
 # ---------------------------------------------------------------------------
@@ -220,8 +234,8 @@ def _yf_get_option_data(ticker: str, expiration: str, strike: float, put_call: s
             'ask': float(ask) if ask else None,
             'mid': float(mid) if mid else None,
             'last': float(row['lastPrice']) if pd.notna(row.get('lastPrice')) else None,
-            'volume': int(row['volume']) if pd.notna(row.get('volume')) else None,
-            'open_interest': int(row['openInterest']) if pd.notna(row.get('openInterest')) else None,
+            'volume': _safe_int(row.get('volume')),
+            'open_interest': _safe_int(row.get('openInterest')),
             'iv': float(row['impliedVolatility']) if pd.notna(row.get('impliedVolatility')) else None,
             'delta': float(row['delta']) if pd.notna(row.get('delta')) else None,
             'gamma': float(row['gamma']) if pd.notna(row.get('gamma')) else None,

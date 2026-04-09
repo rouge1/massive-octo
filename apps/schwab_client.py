@@ -28,6 +28,7 @@ _client = None
 _client_id = None
 _client_secret = None
 _auth_context = None  # stored between get_auth_url() and complete_auth()
+_last_reconnect_attempt = None  # throttle auto-reconnect to every 5 min
 
 
 def _read_token():
@@ -118,17 +119,24 @@ def init(client_id: str, client_secret: str) -> None:
 
 
 def _validate_client() -> bool:
-    """Make a lightweight API call to verify the token is still valid."""
+    """Make a lightweight API call to verify the token is still valid.
+    Retries once after a short delay to handle transient failures."""
+    import time as _time
     if _client is None:
         return False
-    try:
-        resp = _client.get_market_hours(
-            _client.MarketHours.Market.EQUITY
-        )
-        return resp.status_code == 200
-    except Exception as e:
-        logger.debug(f"Schwab token validation failed: {e}")
-        return False
+    for attempt in range(2):
+        try:
+            resp = _client.get_market_hours(
+                _client.MarketHours.Market.EQUITY
+            )
+            if resp.status_code == 200:
+                return True
+            logger.debug(f"Schwab validation attempt {attempt+1} returned {resp.status_code}")
+        except Exception as e:
+            logger.debug(f"Schwab validation attempt {attempt+1} failed: {e}")
+        if attempt == 0:
+            _time.sleep(3)
+    return False
 
 
 def is_available() -> bool:
@@ -159,6 +167,60 @@ def get_status() -> str:
     if _read_token() is not None:
         return "token_expired"
     return "token_missing"
+
+
+def try_reconnect() -> bool:
+    """Attempt to reconnect if client is down but credentials exist.
+
+    Throttled to once every 5 minutes so it doesn't spam Schwab.
+    Uses more retries than _validate_client (5 attempts with 5s backoff)
+    to survive transient failures at market open.
+
+    Returns True if reconnected successfully.
+    """
+    global _last_reconnect_attempt, _client
+    import time as _time
+
+    if _client is not None:
+        return True  # already connected
+    if not _client_id or not _client_secret:
+        return False  # no credentials
+    if _read_token() is None:
+        return False  # no token to refresh
+
+    # Throttle: skip if we tried less than 5 min ago
+    now = _time.time()
+    if _last_reconnect_attempt and (now - _last_reconnect_attempt) < 300:
+        return False
+    _last_reconnect_attempt = now
+
+    logger.info("Schwab auto-reconnect: attempting token refresh...")
+
+    import schwab
+    try:
+        client = schwab.auth.client_from_access_functions(
+            _client_id, _client_secret, _read_token, _write_token
+        )
+    except Exception as e:
+        logger.warning(f"Schwab auto-reconnect: client creation failed: {e}")
+        return False
+
+    # Try up to 5 times with 5s gaps — enough to ride out 9:30 AM server load
+    for attempt in range(5):
+        try:
+            resp = client.get_market_hours(client.MarketHours.Market.EQUITY)
+            if resp.status_code == 200:
+                _client = client
+                logger.info("Schwab auto-reconnect: success — back on Schwab")
+                return True
+            logger.debug(f"Schwab auto-reconnect attempt {attempt+1}: HTTP {resp.status_code}")
+        except Exception as e:
+            logger.debug(f"Schwab auto-reconnect attempt {attempt+1}: {e}")
+        if attempt < 4:
+            _time.sleep(5)
+
+    logger.warning("Schwab auto-reconnect: failed after 5 attempts — will retry in 5 min")
+    return False
 
 
 # ---------------------------------------------------------------------------

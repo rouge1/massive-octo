@@ -114,6 +114,10 @@ class OptionsTimer:
                         logger.info(f"Found {len(watchlist_items)} active watchlist items")
                         self._no_watchlist_logged = False
                     
+                    # Auto-reconnect Schwab if it went down (throttled to every 5 min)
+                    if not schwab_client.is_available():
+                        schwab_client.try_reconnect()
+
                     # Check market status
                     market_status = options_api.is_market_open()
 
