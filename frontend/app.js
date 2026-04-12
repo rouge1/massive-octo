@@ -720,8 +720,8 @@ function renderPriceChart(el, data, selectedDate, colors) {
           connectgaps: true, showlegend: false },
         { x: timestamps, y: stockPrices, name: 'Stock Price', type: 'scatter', mode: 'lines',
           line: { color: colors.stock, width: 1.5 }, yaxis: 'y2' },
-        { x: timestamps, y: lasts, name: 'Last Trade', type: 'scatter', mode: 'markers',
-          marker: { size: 3, color: colors.lastTrade }, connectgaps: false }
+        { x: timestamps, y: lasts, name: 'Last Trade', type: 'scatter', mode: 'lines+markers',
+          marker: { size: 3, color: colors.lastTrade }, line: { color: colors.lastTrade, width: 1 }, connectgaps: false }
     ];
 
     const layout = {

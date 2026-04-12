@@ -52,3 +52,7 @@ config/
 
 #data files
 data/
+
+# Research & diagrams
+diagrams/
+reference_market_research_2026.md

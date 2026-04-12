@@ -1408,22 +1408,15 @@ body {
 }
 
 .watchlist-table td {
-    position: relative;
-    left: 0;
-    transition: left 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+    transition: transform 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 .watchlist-row.drag-over td {
-    left: 12px;
-    border-left: 3px solid var(--accent-primary);
+    transform: translateX(12px);
 }
 
 .watchlist-row.drag-over td:first-child {
-    border-left: 3px solid var(--accent-primary);
-}
-
-.watchlist-row.drag-over td:not(:first-child) {
-    border-left: none;
+    box-shadow: inset 3px 0 0 var(--accent-primary);
 }
 
 /* Drop settle animation */
@@ -1510,6 +1503,9 @@ body {
 .cell-remove {
     text-align: center;
     width: 50px;
+    min-width: 50px;
+    max-width: 50px;
+    padding: 0 2px !important;
 }
 
 .remove-btn {
@@ -1534,8 +1530,8 @@ body {
 }
 
 .remove-btn.remove-confirming {
-    width: auto;
-    padding: 0 8px;
+    width: 46px;
+    padding: 0 4px;
     border-radius: 4px;
     background: var(--accent-danger);
     border-color: var(--accent-danger);
