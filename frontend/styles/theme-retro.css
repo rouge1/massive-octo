@@ -66,11 +66,31 @@
 
 [data-theme="retro"] .watchlist-table th {
     color: #ffd700;
-    font-size: 0.8125rem;
+    font-size: 0.875rem;
 }
 
 [data-theme="retro"] .watchlist-table td {
-    font-size: 0.875rem;
+    font-size: 1rem;
+}
+
+[data-theme="retro"] .cell-ticker {
+    font-size: 1.0625rem;
+}
+
+[data-theme="retro"] .cell-strike {
+    font-size: 1rem;
+}
+
+[data-theme="retro"] .cell-expiration {
+    font-size: 0.9375rem;
+}
+
+[data-theme="retro"] .type-badge {
+    font-size: 0.8125rem;
+}
+
+[data-theme="retro"] .cell-price {
+    font-size: 1rem;
 }
 
 [data-theme="retro"] .logo {
@@ -266,6 +286,7 @@
 
 [data-theme="retro"] .cell-ticker {
     font-family: var(--font-display);
+    font-size: 1.125rem;
     text-shadow: 0 0 5px var(--accent-primary);
 }
 

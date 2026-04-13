@@ -619,6 +619,7 @@ body {
 .data-table td:first-child,
 .data-table th:first-child {
     text-align: left;
+    padding-left: var(--space-md);
 }
 
 .data-table th {
@@ -647,6 +648,7 @@ body {
 }
 .data-table thead th:first-child {
     text-align: left !important;
+    padding-left: var(--space-md) !important;
 }
 
 /* Empty State */
@@ -1447,6 +1449,7 @@ body {
     font-weight: 600;
     color: var(--accent-primary);
     font-size: 0.875rem;
+    padding-left: 12px;
 }
 
 .cell-strike {

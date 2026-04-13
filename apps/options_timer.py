@@ -53,6 +53,7 @@ class OptionsTimer:
         self._db_not_connected_logged = False
         self._no_watchlist_logged = False
         self._backfill_done = False
+        self._last_snapshot_log = 0
         
         logger.info(f"OptionsTimer initialized (db_manager: {id(self.db_manager) if self.db_manager else None})")
     
@@ -186,8 +187,11 @@ class OptionsTimer:
                     # Commit all snapshots
                     session.commit()
                     
-                    if success_count > 0:
+                    import time as _time
+                    now = _time.time()
+                    if success_count > 0 and (error_count > 0 or now - self._last_snapshot_log >= 300):
                         logger.info(f"Stored {success_count} snapshots ({error_count} errors) - Market: {market_status['status']}")
+                        self._last_snapshot_log = now
 
 
                 finally:

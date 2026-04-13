@@ -117,6 +117,104 @@ function Header({ marketStatus }) {
     const { theme, setTheme } = useTheme();
     const themes = ['bloomberg', 'fintech', 'retro', 'swiss'];
 
+    // Retro theme Easter egg: pixel character walks across the header
+    useEffect(() => {
+        if (theme !== 'retro') return;
+
+        const spawnWalker = () => {
+            const header = document.querySelector('.header');
+            if (!header) return;
+
+            const goRight = Math.random() > 0.5;
+            const walker = document.createElement('div');
+            walker.className = 'retro-walker';
+
+            // Pick a random character
+            const characters = [
+                { frames: ['🍄', '🍄'], bob: true, facesLeft: false },
+                { frames: ['🏃', '🚶'], bob: false, facesLeft: true },
+                { frames: ['⭐', '✨'], bob: true, facesLeft: false },
+                { frames: ['👾', '👾'], bob: true, facesLeft: false },
+            ];
+            const char = characters[Math.floor(Math.random() * characters.length)];
+
+            walker.textContent = char.frames[0];
+            // Flip if the character faces the wrong way for its direction
+            const needsFlip = char.facesLeft ? goRight : !goRight;
+            walker.style.cssText = `
+                position: absolute;
+                top: 50%;
+                transform: translateY(-50%) ${needsFlip ? 'scaleX(-1)' : ''};
+                font-size: 20px;
+                z-index: 100;
+                pointer-events: none;
+                ${goRight ? 'left: -30px' : 'right: -30px'};
+                filter: drop-shadow(0 0 4px #ffd700);
+            `;
+
+            header.style.position = 'relative';
+            header.style.overflow = 'hidden';
+            header.appendChild(walker);
+
+            const duration = 6000 + Math.random() * 4000;
+            const startTime = Date.now();
+            let frameIdx = 0;
+
+            const animate = () => {
+                const elapsed = Date.now() - startTime;
+                const progress = elapsed / duration;
+
+                if (progress >= 1) {
+                    walker.remove();
+                    return;
+                }
+
+                const headerWidth = header.offsetWidth + 60;
+                const pos = progress * headerWidth - 30;
+
+                if (goRight) {
+                    walker.style.left = pos + 'px';
+                } else {
+                    walker.style.right = pos + 'px';
+                }
+
+                // Walking bob
+                if (char.bob) {
+                    const bob = Math.sin(elapsed / 120) * 2;
+                    walker.style.transform = `translateY(calc(-50% + ${bob}px)) ${needsFlip ? 'scaleX(-1)' : ''}`;
+                }
+
+                // Alternate frames
+                if (Math.floor(elapsed / 300) !== frameIdx) {
+                    frameIdx = Math.floor(elapsed / 300);
+                    walker.textContent = char.frames[frameIdx % char.frames.length];
+                }
+
+                requestAnimationFrame(animate);
+            };
+
+            requestAnimationFrame(animate);
+        };
+
+        // Spawn at random intervals between 30s and 90s
+        let timeout;
+        const scheduleNext = () => {
+            const delay = 30000 + Math.random() * 60000;
+            timeout = setTimeout(() => {
+                spawnWalker();
+                scheduleNext();
+            }, delay);
+        };
+
+        // First one after 5-15 seconds
+        timeout = setTimeout(() => {
+            spawnWalker();
+            scheduleNext();
+        }, 5000 + Math.random() * 10000);
+
+        return () => clearTimeout(timeout);
+    }, [theme]);
+
     const getMarketStatusText = () => {
         if (!marketStatus) return '';
         if (marketStatus.is_open) return `Market Open`;
