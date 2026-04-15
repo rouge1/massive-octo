@@ -758,14 +758,14 @@ function MetricsGrid({ data }) {
 }
 
 // Chart Component
-const Chart = React.memo(function Chart({ data, selectedDate }) {
+const Chart = React.memo(function Chart({ data, selectedDate, timeframeDays }) {
     const chartRef = useRef(null);
     const { theme } = useTheme();
     const colors = chartColors[theme];
 
     useEffect(() => {
         if (!chartRef.current || data.length === 0) return;
-        renderPriceChart(chartRef.current, data, selectedDate, colors);
+        renderPriceChart(chartRef.current, data, selectedDate, colors, timeframeDays);
     }, [data, theme]);
 
     if (data.length === 0) return null;
@@ -778,7 +778,7 @@ const Chart = React.memo(function Chart({ data, selectedDate }) {
     );
 });
 
-function renderPriceChart(el, data, selectedDate, colors) {
+function renderPriceChart(el, data, selectedDate, colors, timeframeDays) {
     const timestamps = data.map(d => new Date(d.timestamp));
     const bids = data.map(d => d.option_data ? d.option_data.bid : null);
     const asks = data.map(d => d.option_data ? d.option_data.ask : null);
@@ -789,11 +789,15 @@ function renderPriceChart(el, data, selectedDate, colors) {
     let xRange;
     let noDataBreaks = [];
     if (isMultiDay) {
-        xRange = undefined;
+        // Pin x-axis to start exactly N days ago so all charts for the same timeframe align
+        const now = new Date();
+        const cutoff = new Date(now);
+        cutoff.setDate(cutoff.getDate() - (timeframeDays || 15));
+        xRange = [cutoff, now];
         // Detect weekdays with no data and collapse them from the axis
         const tradingDays = new Set(timestamps.map(t => t.toLocaleDateString('en-CA')));
         if (timestamps.length > 0) {
-            const start = new Date(timestamps[0]);
+            const start = new Date(cutoff);
             const end = new Date(timestamps[timestamps.length - 1]);
             for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
                 if (d.getDay() === 0 || d.getDay() === 6) continue;
@@ -824,7 +828,7 @@ function renderPriceChart(el, data, selectedDate, colors) {
 
     const layout = {
         xaxis: {
-            type: 'date', range: xRange, autorange: isMultiDay ? true : undefined,
+            type: 'date', range: xRange,
             showgrid: true, gridcolor: colors.grid, tickfont: { color: colors.text, size: 10 },
             rangebreaks: isMultiDay ? [
                 { bounds: [16, 9.5], pattern: 'hour' },
@@ -1400,7 +1404,7 @@ function WatchlistRow({ item, onRemove, onDragStart, onDragOver, onDragEnd, onDr
         setExpanded(true);
         setHistoryLoading(true);
         try {
-            const res = await fetch(`${API_BASE}/api/snapshots/${item.id}?limit=5000`);
+            const res = await fetch(`${API_BASE}/api/snapshots/${item.id}?limit=15000`);
             const raw = await res.json();
             // Map MySQL fields → Chart/DataTable shape, reverse to oldest-first
             const mapped = raw.map(mapSnapshot).reverse();
@@ -1441,7 +1445,7 @@ function WatchlistRow({ item, onRemove, onDragStart, onDragOver, onDragEnd, onDr
         const countRef = { current: historyData.length };
         const interval = setInterval(async () => {
             try {
-                const res = await fetch(`${API_BASE}/api/snapshots/${item.id}?limit=5000`);
+                const res = await fetch(`${API_BASE}/api/snapshots/${item.id}?limit=15000`);
                 const raw = await res.json();
                 if (raw.length > countRef.current) {
                     countRef.current = raw.length;
@@ -1558,7 +1562,7 @@ function WatchlistRow({ item, onRemove, onDragStart, onDragOver, onDragEnd, onDr
                                 <div className="empty-state-text">No history yet.</div>
                             ) : (
                                 <>
-                                    <Chart data={filteredData} selectedDate={activeTimeframe === 1 ? selectedDate : null} />
+                                    <Chart data={filteredData} selectedDate={activeTimeframe === 1 ? selectedDate : null} timeframeDays={activeTimeframe} />
                                     <div className="chart-footer-row">
                                         <DataTableToggleHeader
                                             isOpen={isDataTableOpen}

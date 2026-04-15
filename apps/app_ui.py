@@ -336,18 +336,26 @@ class Main_App_Window(QMainWindow):
         info_btn.clicked.connect(self.schwab_info_clicked)
         status_row.addWidget(info_btn)
 
-        # Single multi-state action button
-        self.schwab_action_btn = QPushButton("Save")
-        self.schwab_action_btn.setFont(QFont("Arial", 12))
-        self.schwab_action_btn.setMinimumWidth(100)
-        self.schwab_action_btn.clicked.connect(self.schwab_action_clicked)
+        # Authorize button (blue) — opens Schwab dev portal or OAuth page
+        self.schwab_auth_btn = QPushButton("Authorize")
+        self.schwab_auth_btn.setFont(QFont("Arial", 12))
+        self.schwab_auth_btn.setMinimumWidth(100)
+        self.schwab_auth_btn.setStyleSheet("QPushButton { background-color: #2196F3; color: white; }")
+        self.schwab_auth_btn.clicked.connect(self._do_schwab_authorize)
 
-        # Disconnect button (orange) — drops Schwab client, falls back to yfinance
+        # Connect/Disconnect button (orange/green)
         self.schwab_disconnect_btn = QPushButton("Disconnect")
         self.schwab_disconnect_btn.setFont(QFont("Arial", 12))
         self.schwab_disconnect_btn.setMinimumWidth(100)
         self.schwab_disconnect_btn.setStyleSheet("QPushButton { background-color: #FF9800; color: white; }")
         self.schwab_disconnect_btn.clicked.connect(self.schwab_disconnect_clicked)
+
+        # Save button (green) — saves credentials to keyring
+        self.schwab_save_btn = QPushButton("Save")
+        self.schwab_save_btn.setFont(QFont("Arial", 12))
+        self.schwab_save_btn.setMinimumWidth(80)
+        self.schwab_save_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; }")
+        self.schwab_save_btn.clicked.connect(self._do_schwab_save)
 
         # Delete button (red)
         self.schwab_delete_btn = QPushButton("Delete")
@@ -356,8 +364,9 @@ class Main_App_Window(QMainWindow):
         self.schwab_delete_btn.setStyleSheet("QPushButton { background-color: #F44336; color: white; }")
         self.schwab_delete_btn.clicked.connect(self.schwab_delete_clicked)
 
-        status_row.addWidget(self.schwab_action_btn)
+        status_row.addWidget(self.schwab_auth_btn)
         status_row.addWidget(self.schwab_disconnect_btn)
+        status_row.addWidget(self.schwab_save_btn)
         status_row.addWidget(self.schwab_delete_btn)
 
         schwab_layout.addLayout(status_row)
@@ -409,24 +418,17 @@ class Main_App_Window(QMainWindow):
             self.schwab_orb.setStyleSheet("QLabel { border-radius: 6px; background-color: #888888; }")
             self.schwab_status_label.setText("Not configured")
 
-        # Action button state
+        # Authorize button — always enabled (opens dev portal or OAuth page)
         if status == "authorized":
-            self.schwab_action_btn.setText("Authorize")
-            self.schwab_action_btn.setEnabled(False)
-            self.schwab_action_btn.setStyleSheet(
+            self.schwab_auth_btn.setEnabled(False)
+            self.schwab_auth_btn.setStyleSheet(
                 "QPushButton { background-color: #555555; color: #999999; }")
-        elif status in ("token_missing", "token_expired"):
-            self.schwab_action_btn.setText("Authorize")
-            self.schwab_action_btn.setEnabled(True)
-            self.schwab_action_btn.setStyleSheet(
+        else:
+            self.schwab_auth_btn.setEnabled(True)
+            self.schwab_auth_btn.setStyleSheet(
                 "QPushButton { background-color: #2196F3; color: white; }")
-        else:  # not_configured
-            self.schwab_action_btn.setText("Save")
-            self.schwab_action_btn.setEnabled(True)
-            self.schwab_action_btn.setStyleSheet(
-                "QPushButton { background-color: #4CAF50; color: white; }")
 
-        # Disconnect/Reconnect button
+        # Connect/Disconnect button
         if status == "authorized":
             self.schwab_disconnect_btn.setText("Disconnect")
             self.schwab_disconnect_btn.setEnabled(True)
@@ -449,6 +451,14 @@ class Main_App_Window(QMainWindow):
             self.schwab_disconnect_btn.setText("Disconnect")
             self.schwab_disconnect_btn.setEnabled(False)
             self.schwab_disconnect_btn.setStyleSheet("QPushButton { background-color: #555555; color: #999999; }")
+
+        # Save button — enabled when credentials are entered but not yet saved, or to update
+        has_fields = bool(self.schwab_id_field.text().strip() and self.schwab_secret_field.text().strip())
+        self.schwab_save_btn.setEnabled(has_fields and status != "authorized")
+        if has_fields and status != "authorized":
+            self.schwab_save_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; }")
+        else:
+            self.schwab_save_btn.setStyleSheet("QPushButton { background-color: #555555; color: #999999; }")
 
         # Delete button: enabled unless nothing is configured
         self.schwab_delete_btn.setEnabled(status != "not_configured")
@@ -488,15 +498,8 @@ class Main_App_Window(QMainWindow):
         msg.setTextFormat(Qt.RichText)
         msg.exec_()
 
-    def schwab_action_clicked(self):
-        """Dispatch to save or authorize based on current button label."""
-        if self.schwab_action_btn.text() == "Save":
-            self._do_schwab_save()
-        else:
-            self._do_schwab_authorize()
-
     def _do_schwab_save(self):
-        """Save Schwab credentials, init client, and open browser for auth."""
+        """Save Schwab credentials to keyring."""
         client_id = self.schwab_id_field.text().strip()
         client_secret = self.schwab_secret_field.text().strip()
         if not client_id or not client_secret:
@@ -504,39 +507,44 @@ class Main_App_Window(QMainWindow):
             return
         gm.save_schwab_credentials(client_id, client_secret)
         schwab_client.init(client_id, client_secret)
-        auth_url = schwab_client.get_auth_url(client_id)
-        webbrowser.open(auth_url)
         self.update_schwab_status()
-        logger.info("Schwab credentials saved — browser opened for auth")
+        logger.info("Schwab credentials saved")
 
     def _do_schwab_authorize(self):
-        """Complete OAuth flow using the URL pasted into the Auth URL field.
+        """Open Schwab dev portal (if no credentials) or OAuth page, or complete auth."""
+        status = schwab_client.get_status()
 
-        If no callback URL is pasted yet, open the browser with a fresh auth URL
-        so the user can log in and get one.
-        """
+        # No credentials — open the developer portal
+        if status == "not_configured":
+            webbrowser.open("https://developer.schwab.com")
+            logger.info("Opened Schwab developer portal — copy your Client ID and Client Secret, paste them here, then click Save")
+            return
+
         client_id = self.schwab_id_field.text().strip()
         client_secret = self.schwab_secret_field.text().strip()
         if not client_id or not client_secret:
-            QMessageBox.warning(self, "Schwab Auth",
-                                "Enter Client ID and Client Secret first, then click Save.")
+            webbrowser.open("https://developer.schwab.com")
+            logger.info("Opened Schwab developer portal — copy your Client ID and Client Secret")
             return
+
+        # Check if callback URL is pasted — if so, complete auth
         received_url = self.schwab_auth_url_field.text().strip()
-        if not received_url:
-            # No callback URL yet — open browser with fresh auth context
-            schwab_client.init(client_id, client_secret)
-            auth_url = schwab_client.get_auth_url(client_id)
-            webbrowser.open(auth_url)
-            logger.info("Schwab browser opened for re-authorization — paste callback URL and click Authorize again")
+        if received_url:
+            success = schwab_client.complete_auth(client_id, client_secret, received_url)
+            self._write_data_source()
+            self.update_schwab_status()
+            if success:
+                gm.save_settings(schwab_callback_url=received_url)
+                logger.info("Schwab authorization complete")
+            else:
+                logger.error("Schwab authorization failed — check logs for details")
             return
-        success = schwab_client.complete_auth(client_id, client_secret, received_url)
-        self._write_data_source()
-        self.update_schwab_status()
-        if success:
-            gm.save_settings(schwab_callback_url=received_url)
-            logger.info("Schwab authorization complete")
-        else:
-            logger.error("Schwab authorization failed — check logs for details")
+
+        # No callback URL yet — open browser with OAuth page
+        schwab_client.init(client_id, client_secret)
+        auth_url = schwab_client.get_auth_url(client_id)
+        webbrowser.open(auth_url)
+        logger.info("Schwab browser opened for authorization — paste callback URL and click Authorize again")
 
     def _write_data_source(self):
         """Write current data source to website_settings.json so the web server can read it."""

@@ -53,6 +53,7 @@ class OptionsTimer:
         self._db_not_connected_logged = False
         self._no_watchlist_logged = False
         self._backfill_done = False
+        self._stock_backfill_done = False
         self._last_snapshot_log = 0
         
         logger.info(f"OptionsTimer initialized (db_manager: {id(self.db_manager) if self.db_manager else None})")
@@ -93,7 +94,12 @@ class OptionsTimer:
                         await self._backfill_from_schwab()
                         self._backfill_done = True
 
-                    # Fill any stock price gaps (runs after Schwab backfill)
+                    # Backfill 15 days of stock prices from yfinance
+                    if not self._stock_backfill_done:
+                        await self._backfill_stock_prices()
+                        self._stock_backfill_done = True
+
+                    # Fill any stock price gaps (runs after backfills)
                     await self._fill_stock_gaps()
 
                 # Get active watchlist items
@@ -323,6 +329,71 @@ class OptionsTimer:
         finally:
             session.close()
 
+    async def _backfill_stock_prices(self):
+        """Backfill 15 days of 5-min stock price candles from yfinance for all active tickers."""
+        session = self.db_manager.get_session()
+        try:
+            items = session.query(db.OptionsWatchlist).filter(
+                db.OptionsWatchlist.is_active == True
+            ).all()
+            if not items:
+                return
+
+            # Group by ticker
+            ticker_items = {}
+            for item in items:
+                ticker_items.setdefault(item.ticker, []).append(item)
+
+            total_inserted = 0
+            for ticker, group in ticker_items.items():
+                try:
+                    stock = yf.Ticker(ticker)
+                    hist = stock.history(period="15d", interval="5m")
+                    if hist.empty:
+                        logger.warning(f"Stock backfill: no yfinance data for {ticker}")
+                        continue
+                    # Strip timezone for comparison
+                    hist.index = hist.index.tz_localize(None)
+                except Exception as e:
+                    logger.warning(f"Stock backfill: yfinance failed for {ticker}: {e}")
+                    continue
+
+                for item in group:
+                    existing = set(
+                        row[0] for row in session.query(db.OptionSnapshot.timestamp)
+                        .filter(db.OptionSnapshot.watchlist_id == item.id)
+                        .all()
+                    )
+
+                    inserted = 0
+                    for ts, row in hist.iterrows():
+                        candle_ts = ts.to_pydatetime().replace(tzinfo=None)
+                        if candle_ts in existing:
+                            continue
+                        snapshot = db.OptionSnapshot(
+                            watchlist_id=item.id,
+                            timestamp=candle_ts,
+                            stock_price=float(row["Close"]),
+                        )
+                        session.add(snapshot)
+                        inserted += 1
+
+                    total_inserted += inserted
+                    dte = options_api.calculate_dte(item.expiration)
+                    logger.info(f"Stock backfill: {ticker} ${item.strike} {item.put_call} {dte}DTE — {inserted} new of {len(hist)} candles ({len(existing)} existing)")
+
+            session.commit()
+            if total_inserted:
+                logger.info(f"Stock backfill complete: {total_inserted} snapshots inserted")
+            else:
+                logger.info("Stock backfill: all data already present")
+
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Stock backfill failed: {e}")
+        finally:
+            session.close()
+
     async def _backfill_from_schwab(self):
         """Pull historical 5-min candles from Schwab for all active watchlist items."""
         session = self.db_manager.get_session()
@@ -412,21 +483,11 @@ class OptionsTimer:
                         continue
 
                     stock_price = stock_candles.get(candle["timestamp"])
-                    mid = candle["close"]
-                    spread_pct = (
-                        (mid / stock_price) * 100
-                        if stock_price and stock_price > 0
-                        else None
-                    )
 
                     snapshot = db.OptionSnapshot(
                         watchlist_id=item.id,
                         timestamp=candle["timestamp"],
                         stock_price=stock_price,
-                        mid=mid,
-                        last_price=mid,
-                        volume=candle["volume"],
-                        spread_pct=spread_pct,
                     )
                     session.add(snapshot)
                     inserted += 1

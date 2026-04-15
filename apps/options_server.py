@@ -22,6 +22,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import yfinance as yf
 
 # Local imports
 import apps.database as db
@@ -205,20 +206,10 @@ class OptionsServer:
                     skipped += 1
                     continue
                 stock_price = stock_candles.get(candle["timestamp"])
-                mid = candle["close"]
-                spread_pct = (
-                    (mid / stock_price) * 100
-                    if stock_price and stock_price > 0
-                    else None
-                )
                 snapshot = db.OptionSnapshot(
                     watchlist_id=item.id,
                     timestamp=candle["timestamp"],
                     stock_price=stock_price,
-                    mid=mid,
-                    last_price=mid,
-                    volume=candle["volume"],
-                    spread_pct=spread_pct,
                 )
                 session.add(snapshot)
                 inserted += 1
@@ -228,6 +219,50 @@ class OptionsServer:
         except Exception as e:
             session.rollback()
             logger.error(f"Backfill failed for item {item_id}: {e}")
+        finally:
+            session.close()
+
+    def _backfill_stock_prices(self, item_id: int):
+        """Backfill 15 days of 5-min stock price candles from yfinance for a single item."""
+        session = self.db_manager.get_session()
+        try:
+            item = session.query(db.OptionsWatchlist).filter(
+                db.OptionsWatchlist.id == item_id
+            ).first()
+            if not item:
+                return
+
+            stock = yf.Ticker(item.ticker)
+            hist = stock.history(period="15d", interval="5m")
+            if hist.empty:
+                logger.warning(f"Stock backfill: no yfinance data for {item.ticker}")
+                return
+            hist.index = hist.index.tz_localize(None)
+
+            existing = set(
+                row[0] for row in session.query(db.OptionSnapshot.timestamp)
+                .filter(db.OptionSnapshot.watchlist_id == item.id)
+                .all()
+            )
+
+            inserted = 0
+            for ts, row in hist.iterrows():
+                candle_ts = ts.to_pydatetime().replace(tzinfo=None)
+                if candle_ts in existing:
+                    continue
+                snapshot = db.OptionSnapshot(
+                    watchlist_id=item.id,
+                    timestamp=candle_ts,
+                    stock_price=float(row["Close"]),
+                )
+                session.add(snapshot)
+                inserted += 1
+
+            session.commit()
+            logger.info(f"Stock backfill: {item.ticker} — {inserted} new from yfinance")
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Stock backfill failed for item {item_id}: {e}")
         finally:
             session.close()
 
@@ -312,6 +347,12 @@ class OptionsServer:
                         self._backfill_item(item_id)
                     except Exception as e:
                         logger.warning(f"Backfill for new item failed: {e}")
+
+                # Backfill 15 days of stock prices from yfinance
+                try:
+                    self._backfill_stock_prices(item_id)
+                except Exception as e:
+                    logger.warning(f"Stock backfill for new item failed: {e}")
 
                 return result
             except Exception as e:
