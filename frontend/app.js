@@ -766,7 +766,7 @@ const Chart = React.memo(function Chart({ data, selectedDate, timeframeDays }) {
     useEffect(() => {
         if (!chartRef.current || data.length === 0) return;
         renderPriceChart(chartRef.current, data, selectedDate, colors, timeframeDays);
-    }, [data, theme]);
+    }, [data, theme, selectedDate, timeframeDays]);
 
     if (data.length === 0) return null;
 
@@ -814,16 +814,20 @@ function renderPriceChart(el, data, selectedDate, colors, timeframeDays) {
 
     const tradingWindowMs = 6.5 * 60 * 60 * 1000;
 
+    // The x-unified tooltip lists rows in reverse of trace-array order, so the
+    // array runs bottom→top of the desired tooltip: Bid (bottom) → Ask → Last →
+    // Stock Price (top). The band fill ('tonexty') fills to the immediately-
+    // preceding trace, so the Ask line carries the fill down to Bid.
     const traces = [
-        { x: timestamps, y: bids, name: 'Bid / Ask', type: 'scatter', mode: 'lines',
+        { x: timestamps, y: bids, name: 'Bid', type: 'scatter', mode: 'lines',
           line: { color: colors.mid, width: 2 }, connectgaps: true },
         { x: timestamps, y: asks, name: 'Ask', type: 'scatter', mode: 'lines',
           line: { color: colors.mid, width: 2 }, fill: 'tonexty', fillcolor: colors.bandFill,
-          connectgaps: true, showlegend: false },
-        { x: timestamps, y: stockPrices, name: 'Stock Price', type: 'scatter', mode: 'lines',
-          line: { color: colors.stock, width: 1.5 }, yaxis: 'y2' },
+          connectgaps: true },
         { x: timestamps, y: lasts, name: 'Last Trade', type: 'scatter', mode: 'lines+markers',
-          marker: { size: 3, color: colors.lastTrade }, line: { color: colors.lastTrade, width: 1 }, connectgaps: false }
+          marker: { size: 3, color: colors.lastTrade }, line: { color: colors.lastTrade, width: 1 }, connectgaps: false },
+        { x: timestamps, y: stockPrices, name: 'Stock Price', type: 'scatter', mode: 'lines',
+          line: { color: colors.stock, width: 1.5 }, yaxis: 'y2' }
     ];
 
     const layout = {
@@ -845,6 +849,17 @@ function renderPriceChart(el, data, selectedDate, colors, timeframeDays) {
         legend: { orientation: 'h', y: 1.12, x: 0.5, xanchor: 'center', font: { size: 11 } },
         margin: { l: 60, r: 60, t: 30, b: 40 }, hovermode: 'x unified'
     };
+
+    // Plotly.react() diffs against the existing plot and retains stale x-axis
+    // state when the axis mode flips (multi-day rangebreaks ↔ single-day window).
+    // That stale state maps points outside the visible range, so traces look
+    // empty until a full refresh. Purge first when the mode changes to force a
+    // clean redraw (equivalent to newPlot) only when needed.
+    const modeSig = isMultiDay ? `multi:${timeframeDays}` : `day:${selectedDate}`;
+    if (el._chartModeSig && el._chartModeSig !== modeSig) {
+        Plotly.purge(el);
+    }
+    el._chartModeSig = modeSig;
 
     Plotly.react(el, traces, layout, { responsive: true, displayModeBar: false });
 }
