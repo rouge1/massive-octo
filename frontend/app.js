@@ -1035,7 +1035,12 @@ function DataTableToggleHeader({ isOpen, onToggle, selectedDate, availableDates,
     const is1D = activeTimeframe === 1;
     const hasDates = is1D && availableDates && availableDates.length > 0 && selectedDate;
     const idx = hasDates ? availableDates.indexOf(selectedDate) : -1;
-    const isToday = selectedDate === new Date().toLocaleDateString('en-CA');
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    const isToday = selectedDate === todayStr;
+    // "Today" jumps to the most recent available trading day (rightmost date),
+    // so it stays useful pre-market / weekends when today has no data yet.
+    const latestDate = hasDates ? availableDates[availableDates.length - 1] : null;
+    const onLatest = selectedDate === latestDate;
 
     const fmt = (d) => {
         const dt = new Date(d + 'T12:00:00');
@@ -1074,6 +1079,9 @@ function DataTableToggleHeader({ isOpen, onToggle, selectedDate, availableDates,
                         <button className="date-nav-inline-btn"
                             onClick={e => { e.stopPropagation(); onDateChange(availableDates[idx + 1]); }}
                             disabled={idx >= availableDates.length - 1}>→</button>
+                        <button className="date-nav-inline-btn date-nav-today-btn"
+                            onClick={e => { e.stopPropagation(); onDateChange(latestDate); }}
+                            disabled={!hasDates || onLatest}>Today</button>
                     </div>
                 )}
             </div>

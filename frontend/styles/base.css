@@ -1020,6 +1020,10 @@ body {
     text-align: center;
 }
 
+.date-nav-today-btn {
+    margin-left: var(--space-xs);
+}
+
 .date-nav-toggle-right {
     display: flex;
     align-items: center;
