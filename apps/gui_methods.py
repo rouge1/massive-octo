@@ -65,7 +65,7 @@ def convert_seconds_to_human_readable(seconds):
         return f"{days} day{'s' if days > 1 else ''}"
 
 
-def save_settings(x=None, y=None, width=None, height=None, headless=None, screenshot_viewer=None, domain_name=None, port=None, browser_x=None, browser_y=None, browser_width=None, browser_height=None, start_time=None, db_user=None, db_name=None, schwab_callback_url=None):
+def save_settings(x=None, y=None, width=None, height=None, headless=None, screenshot_viewer=None, domain_name=None, port=None, browser_x=None, browser_y=None, browser_width=None, browser_height=None, start_time=None, db_user=None, db_name=None, schwab_callback_url=None, cards_collapsed=None):
     """Save window and browser settings to config file (nested structure)
 
     Args:
@@ -127,6 +127,15 @@ def save_settings(x=None, y=None, width=None, height=None, headless=None, screen
             settings['schwab'] = {}
         settings['schwab']['callback_url'] = schwab_callback_url
 
+    # Update collapsed state of the settings cards (dict like {'db': bool, 'schwab': bool})
+    if cards_collapsed is not None:
+        if 'cards' not in settings:
+            settings['cards'] = {}
+        if 'db' in cards_collapsed:
+            settings['cards']['db_collapsed'] = bool(cards_collapsed['db'])
+        if 'schwab' in cards_collapsed:
+            settings['cards']['schwab_collapsed'] = bool(cards_collapsed['schwab'])
+
     # Save updated settings
     try:
         with open(settings_file, 'w') as f:
@@ -166,9 +175,13 @@ def get_settings():
         'database': {
             'user': None,
             'name': None
+        },
+        'cards': {
+            'db_collapsed': False,      # default: both settings cards open
+            'schwab_collapsed': False
         }
     }
-    
+
     try:
         if os.path.exists(settings_file):
             with open(settings_file, 'r') as f:

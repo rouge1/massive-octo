@@ -14,6 +14,7 @@ Tokens are stored encrypted in GNOME Keyring — never written to disk as plaint
 
 import json
 import logging
+import time
 from datetime import datetime, date
 
 import keyring
@@ -29,6 +30,20 @@ _client_id = None
 _client_secret = None
 _auth_context = None  # stored between get_auth_url() and complete_auth()
 _last_reconnect_attempt = None  # throttle auto-reconnect to every 5 min
+# True once the server has rejected our refresh token with invalid_grant. The token
+# in the keyring is dead and no amount of re-init/reconnect can revive it — only a
+# full re-Authorize will. This is distinct from a merely-lapsed access token, and it
+# drives the GUI to reset to Step 1 instead of offering a (futile) Reconnect.
+_reauth_required = False
+
+# Short-lived cache of the full option chain per (ticker, put_call). The chain is
+# the heaviest market-data call and several paths request the same ticker within
+# a few seconds (QuickAddCard strikes→contracts, watcher polling several
+# contracts on one ticker). Caching collapses those bursts into a single Schwab
+# request, easing the ~120/min per-app rate limit. TTL is short so stored
+# snapshots stay fresh — each 30s/5min poll still fetches a live chain.
+_CHAIN_CACHE_TTL = 8.0  # seconds
+_chain_cache = {}        # (ticker, put_call) -> (monotonic_ts, parsed_json)
 
 
 def _read_token():
@@ -53,15 +68,39 @@ class SchwabUnavailable(Exception):
     pass
 
 
+def _is_refresh_token_dead(error) -> bool:
+    """True if the error is an OAuth invalid_grant — the refresh token itself is
+    revoked/expired and cannot be revived by re-init or reconnect (the keyring holds
+    the same dead token). Only a full re-Authorize fixes it. Schwab phrases this as a
+    400 with "Refresh token is invalid, expired or revoked"."""
+    s = str(error).lower()
+    return any(x in s for x in (
+        "invalid_grant", "unsupported_token_type", "refresh token is invalid",
+    ))
+
+
 def _handle_token_error(error):
     """If the error is a token/auth failure, try to reinit from keyring (refresh token).
     Only disables the client if reinit also fails."""
-    global _client
+    global _client, _reauth_required
     err_str = str(error).lower()
+
+    # A dead refresh token cannot be recovered by re-init — the keyring holds the same
+    # dead token. Flag re-auth as required (drives the GUI back to Step 1) and disable
+    # the client immediately so we fall back to yfinance instead of retrying every cycle.
+    if _is_refresh_token_dead(error):
+        if not _reauth_required:
+            logger.warning(
+                "Schwab refresh token is invalid/expired/revoked — re-authorize from "
+                "Step 1 in the GUI (Reconnect cannot revive it)"
+            )
+        _reauth_required = True
+        _client = None
+        return
 
     # Check for explicit token error strings
     is_token_error = any(s in err_str for s in (
-        "token_invalid", "token_expired", "refresh_token",
+        "token_invalid", "token_expired", "refresh_token", "refresh token",
         "401 unauthorized", "403 forbidden",
     ))
 
@@ -94,7 +133,7 @@ def init(client_id: str, client_secret: str) -> None:
     Sets _client to a live client on success; None if token missing or bad.
     Always safe to call — never raises.
     """
-    global _client, _client_id, _client_secret
+    global _client, _client_id, _client_secret, _reauth_required
     _client_id = client_id
     _client_secret = client_secret
     try:
@@ -109,6 +148,7 @@ def init(client_id: str, client_secret: str) -> None:
                 logger.warning("Schwab token is expired or invalid — re-authorize via GUI")
                 _client = None
             else:
+                _reauth_required = False  # a live token clears any prior revoked flag
                 logger.info("Schwab client initialized from keyring")
         else:
             logger.info("Schwab tokens not found in keyring — use GUI to authorize")
@@ -122,6 +162,7 @@ def _validate_client() -> bool:
     """Make a lightweight API call to verify the token is still valid.
     Retries once after a short delay to handle transient failures."""
     import time as _time
+    global _reauth_required
     if _client is None:
         return False
     for attempt in range(2):
@@ -134,6 +175,11 @@ def _validate_client() -> bool:
             logger.debug(f"Schwab validation attempt {attempt+1} returned {resp.status_code}")
         except Exception as e:
             logger.debug(f"Schwab validation attempt {attempt+1} failed: {e}")
+            # A revoked refresh token won't recover on retry — flag it and stop early
+            # so the GUI routes to Step 1 and we don't burn the 3s backoff for nothing.
+            if _is_refresh_token_dead(e):
+                _reauth_required = True
+                return False
         if attempt == 0:
             _time.sleep(3)
     return False
@@ -152,18 +198,39 @@ def disconnect():
 
 def reset():
     """Clear the in-memory client after credentials are deleted."""
-    global _client, _client_id, _client_secret
+    global _client, _client_id, _client_secret, _reauth_required
     _client = None
     _client_id = None
     _client_secret = None
+    _reauth_required = False
+    _chain_cache.clear()
+
+
+def clear_token():
+    """Delete the stored OAuth token (keeping client_id/secret) and clear the revoked
+    flag. Used when recovering from a revoked token: discarding the dead token moves the
+    flow to 'token_missing' (Step 2 / Authorize) instead of looping back to Step 1."""
+    global _client, _reauth_required
+    try:
+        keyring.delete_password(KEYRING_SERVICE, KEYRING_TOKEN_KEY)
+    except Exception:
+        pass  # token already absent — nothing to delete
+    _client = None
+    _reauth_required = False
 
 
 def get_status() -> str:
-    """Return 'authorized' | 'token_missing' | 'token_expired' | 'not_configured'."""
+    """Return 'authorized' | 'token_revoked' | 'token_expired' | 'token_missing' | 'not_configured'.
+
+    token_revoked is distinct from token_expired: the refresh token itself was rejected
+    (invalid_grant), so Reconnect is futile and the GUI must route to a full re-Authorize.
+    """
     if not _client_id:
         return "not_configured"
     if _client is not None:
         return "authorized"
+    if _reauth_required:
+        return "token_revoked"
     if _read_token() is not None:
         return "token_expired"
     return "token_missing"
@@ -178,7 +245,7 @@ def try_reconnect() -> bool:
 
     Returns True if reconnected successfully.
     """
-    global _last_reconnect_attempt, _client
+    global _last_reconnect_attempt, _client, _reauth_required
     import time as _time
 
     if _client is not None:
@@ -187,6 +254,8 @@ def try_reconnect() -> bool:
         return False  # no credentials
     if _read_token() is None:
         return False  # no token to refresh
+    if _reauth_required:
+        return False  # refresh token revoked — only a full re-Authorize can fix it
 
     # Throttle: skip if we tried less than 5 min ago
     now = _time.time()
@@ -216,6 +285,11 @@ def try_reconnect() -> bool:
             logger.debug(f"Schwab auto-reconnect attempt {attempt+1}: HTTP {resp.status_code}")
         except Exception as e:
             logger.debug(f"Schwab auto-reconnect attempt {attempt+1}: {e}")
+            if _is_refresh_token_dead(e):
+                _reauth_required = True
+                logger.warning("Schwab auto-reconnect: refresh token revoked — "
+                               "re-authorize from Step 1 (giving up auto-reconnect)")
+                return False
         if attempt < 4:
             _time.sleep(5)
 
@@ -243,7 +317,7 @@ def complete_auth(client_id: str, client_secret: str, received_url: str,
     Uses schwab-py's client_from_received_url to save tokens and init the client.
     Returns True on success.
     """
-    global _client, _auth_context
+    global _client, _auth_context, _reauth_required
     try:
         import schwab
 
@@ -253,6 +327,7 @@ def complete_auth(client_id: str, client_secret: str, received_url: str,
         _client = schwab.auth.client_from_received_url(
             client_id, client_secret, _auth_context, received_url, _write_token
         )
+        _reauth_required = False  # fresh token from a full re-Authorize — clear the flag
         logger.info("Schwab tokens saved to keyring")
         return True
     except Exception as e:
@@ -283,17 +358,37 @@ def get_stock_price(ticker: str) -> float:
         raise SchwabUnavailable(f"Schwab get_stock_price: {e}") from e
 
 
+def _get_chain_json(ticker: str, put_call: str) -> dict:
+    """Return the full (unfiltered) Schwab option chain for ticker/put_call.
+
+    Result is cached for _CHAIN_CACHE_TTL seconds so repeated calls for the same
+    ticker within a short window reuse one Schwab request. Always fetches the
+    unfiltered chain so any strike/expiration query can be served from it.
+    Raises SchwabUnavailable on failure.
+    """
+    if not _client:
+        raise SchwabUnavailable("Schwab not available")
+    ticker = ticker.upper()
+    cache_key = (ticker, put_call)
+    cached = _chain_cache.get(cache_key)
+    if cached is not None and (time.monotonic() - cached[0]) < _CHAIN_CACHE_TTL:
+        return cached[1]
+    import schwab
+    contract_type = (schwab.client.Client.Options.ContractType.CALL
+                     if put_call == "call"
+                     else schwab.client.Client.Options.ContractType.PUT)
+    resp = _client.get_option_chain(ticker, contract_type=contract_type)
+    resp.raise_for_status()
+    data = resp.json()
+    _chain_cache[cache_key] = (time.monotonic(), data)
+    return data
+
+
 def list_available_strikes(ticker: str, put_call: str) -> list:
     if not _client:
         raise SchwabUnavailable("Schwab not available")
     try:
-        import schwab
-        contract_type = (schwab.client.Client.Options.ContractType.CALL
-                         if put_call == "call"
-                         else schwab.client.Client.Options.ContractType.PUT)
-        resp = _client.get_option_chain(ticker.upper(), contract_type=contract_type)
-        resp.raise_for_status()
-        data = resp.json()
+        data = _get_chain_json(ticker, put_call)
         key = "callExpDateMap" if put_call == "call" else "putExpDateMap"
         strikes = set()
         for strike_map in data.get(key, {}).values():
@@ -313,13 +408,7 @@ def list_available_contracts(ticker: str, strike: float, put_call: str) -> list:
     if not _client:
         raise SchwabUnavailable("Schwab not available")
     try:
-        import schwab
-        contract_type = (schwab.client.Client.Options.ContractType.CALL
-                         if put_call == "call"
-                         else schwab.client.Client.Options.ContractType.PUT)
-        resp = _client.get_option_chain(ticker.upper(), contract_type=contract_type, strike=strike)
-        resp.raise_for_status()
-        data = resp.json()
+        data = _get_chain_json(ticker, put_call)
         key = "callExpDateMap" if put_call == "call" else "putExpDateMap"
         today = date.today()
         result = []
@@ -348,20 +437,7 @@ def get_option_data(ticker: str, expiration: str, strike: float, put_call: str) 
     if not _client:
         raise SchwabUnavailable("Schwab not available")
     try:
-        import schwab
-        exp_date = datetime.strptime(expiration, "%Y-%m-%d").date()
-        contract_type = (schwab.client.Client.Options.ContractType.CALL
-                         if put_call == "call"
-                         else schwab.client.Client.Options.ContractType.PUT)
-        resp = _client.get_option_chain(
-            ticker.upper(),
-            contract_type=contract_type,
-            strike=strike,
-            from_date=exp_date,
-            to_date=exp_date,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        data = _get_chain_json(ticker, put_call)
         key = "callExpDateMap" if put_call == "call" else "putExpDateMap"
         for exp_key, strike_map in data.get(key, {}).items():
             if exp_key.startswith(expiration):
