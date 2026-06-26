@@ -163,11 +163,30 @@ case "$1" in
         stop_watcher
         stop_website
         ;;
+    restart)
+        stop_watcher
+        stop_website
+        # Give the processes a moment to exit and release the web server port
+        sleep 2
+        echo ""
+        if ! ensure_conda_env; then
+            echo ""
+            echo "Failed to ensure conda environment. Aborting."
+            exit 1
+        fi
+        echo ""
+        start_watcher
+        start_website
+        echo ""
+        echo "Logs:"
+        echo "  config/watcher.log"
+        echo "  config/website.log"
+        ;;
     status)
         status
         ;;
     *)
-        echo "Usage: $0 {start|stop|status}"
+        echo "Usage: $0 {start|stop|restart|status}"
         exit 1
         ;;
 esac
