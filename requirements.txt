@@ -1,10 +1,32 @@
+# Options Premium Tracker — Python dependencies
+# Install:  conda activate mass && pip install -r requirements.txt
+# Frontend (React, Plotly) loads from CDN — no JS build step, so not listed here.
+
+# --- Web backend (FastAPI + SSE) ---
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
 websockets>=12.0
-yfinance>=0.2.36
-pytz>=2024.1
+
+# --- Desktop control panels (PyQt5 GUIs) ---
+PyQt5>=5.15.0
+pillow>=10.0.0
+
+# --- Database (MySQL via SQLAlchemy ORM) ---
 sqlalchemy>=2.0.0
 pymysql>=1.1.0
+
+# --- Market data ---
+yfinance>=0.2.36
+schwab-py>=1.5.0
+pandas>=2.0.0
+pytz>=2024.1
+
+# --- Credential storage & auth ---
+keyring>=24.0.0
 bcrypt>=4.0.1
-pillow>=10.0.0
-PyQt5>=5.15.0
+
+# --- Verification suite (./mass.sh verify) ---
+requests>=2.31.0
+# playwright drives system Google Chrome via channel="chrome", so no
+# `playwright install` browser download is needed — the pip package suffices.
+playwright>=1.40.0

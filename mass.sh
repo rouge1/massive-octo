@@ -125,6 +125,38 @@ stop_website() {
     fi
 }
 
+verify() {
+    # Phase-1 verification suite:
+    #   - headless Schwab state-machine + symbol-padding tests (no network/keyring)
+    #   - live API smoke tests against the running website server
+    # Logic tests run regardless; API tests need ./mass.sh start to be up.
+    cd "$PROJECT_DIR"
+    local rc=0
+
+    echo "=== [1/3] Schwab logic (headless) ==="
+    python tests/test_schwab_logic.py || rc=1
+
+    echo ""
+    echo "=== [2/3] API smoke (live server) ==="
+    python tests/test_api_smoke.py || rc=1
+
+    echo ""
+    echo "=== [3/3] UI (headless browser) ==="
+    if python -c "import playwright" 2>/dev/null; then
+        python tests/test_ui.py || rc=1
+    else
+        echo "  SKIP  playwright not installed (pip install playwright) — UI tier skipped"
+    fi
+
+    echo ""
+    if [ "$rc" -eq 0 ]; then
+        echo "✓ VERIFY PASSED"
+    else
+        echo "✗ VERIFY FAILED — see failures above"
+    fi
+    return $rc
+}
+
 status() {
     echo "=== Options Watcher (options_watcher.py) ==="
     if [ -f "$WATCHER_PID_FILE" ] && kill -0 $(cat "$WATCHER_PID_FILE") 2>/dev/null; then
@@ -185,8 +217,31 @@ case "$1" in
     status)
         status
         ;;
+    verify)
+        if ! ensure_conda_env; then
+            echo ""
+            echo "Failed to ensure conda environment. Aborting."
+            exit 1
+        fi
+        echo ""
+        verify
+        exit $?
+        ;;
+    verify-meta)
+        # Mutation-tests the verify suite itself: proves it goes RED when code/
+        # responses break. Slower (runs the suite ~10x incl. browser) — run occasionally.
+        if ! ensure_conda_env; then
+            echo ""
+            echo "Failed to ensure conda environment. Aborting."
+            exit 1
+        fi
+        echo ""
+        cd "$PROJECT_DIR"
+        python tests/test_meta.py
+        exit $?
+        ;;
     *)
-        echo "Usage: $0 {start|stop|restart|status}"
+        echo "Usage: $0 {start|stop|restart|status|verify|verify-meta}"
         exit 1
         ;;
 esac
