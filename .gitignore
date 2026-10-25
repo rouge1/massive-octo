@@ -56,3 +56,6 @@ data/
 # Research & diagrams
 diagrams/
 reference_market_research_2026.md
+# Generated backtest charts / npm lockfile (no-build frontend)
+pair_backtest_*.png
+frontend/package-lock.json
