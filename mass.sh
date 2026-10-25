@@ -11,7 +11,7 @@ WEBSITE_PID_FILE="$CONFIG_DIR/website.pid"
 WATCHER_LOG="$CONFIG_DIR/watcher.log"
 WEBSITE_LOG="$CONFIG_DIR/website.log"
 
-PREFERRED_ENVS=("mass" "price-env")
+PREFERRED_ENVS=("mass")
 
 # Capture X11 display vars now, before any subshell changes them
 CAPTURED_DISPLAY="${DISPLAY:-:0}"
@@ -57,7 +57,7 @@ ensure_conda_env() {
     done
 
     echo "ERROR: Could not activate any of: ${PREFERRED_ENVS[*]}"
-    echo "       Try running: conda activate mass   OR   conda activate price-env"
+    echo "       Try running: conda activate mass"
     return 1
 }
 
@@ -129,9 +129,22 @@ verify() {
     # Phase-1 verification suite:
     #   - headless Schwab state-machine + symbol-padding tests (no network/keyring)
     #   - live API smoke tests against the running website server
-    # Logic tests run regardless; API tests need ./mass.sh start to be up.
+    #   - headless-browser UI tests against the running website server
+    # Logic tests run regardless; the API + UI phases need ./mass.sh start to be
+    # up (otherwise they FAIL with 'connection refused', not a real regression).
     cd "$PROJECT_DIR"
     local rc=0
+
+    # Phases 2 (API smoke) and 3 (UI) hit the live website server. If it isn't
+    # up they fail with "connection refused" — warn up front so the failure
+    # isn't mistaken for a real regression.
+    if ! { [ -f "$WEBSITE_PID_FILE" ] && kill -0 "$(cat "$WEBSITE_PID_FILE")" 2>/dev/null; }; then
+        echo "⚠  WARNING: website server does not appear to be running."
+        echo "   Phases [2/3] API smoke and [3/3] UI need it up, or they will FAIL"
+        echo "   with 'connection refused'. Start it first:  ./mass.sh start"
+        echo "   (If you just ran start, give it a few seconds to finish booting.)"
+        echo ""
+    fi
 
     echo "=== [1/3] Schwab logic (headless) ==="
     python tests/test_schwab_logic.py || rc=1
